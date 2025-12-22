@@ -123,16 +123,73 @@ export class BeadsAdapter {
 
     // 2) Bulk load labels
     const labelsByIssue = new Map<string, string[]>();
+    // 3) Bulk load relationships
+    // We want to know:
+    // - Parent (if type='parent-child', issue_id -> depends_on_id=Parent)
+    // - Children (inverse of above)
+    // - Blocked By (type='blocks', issue_id -> depends_on_id=Blocker)
+    // - Blocks (inverse of above)
+    
+    interface RelRow {
+      issue_id: string; // The one dealing with the dependency
+      other_id: string; // The other side
+      other_title: string;
+      rel_type: string; // 'parent-child' or 'blocks'
+    }
+
+    const parentMap = new Map<string, { id: string; title: string }>();
+    const childrenMap = new Map<string, { id: string; title: string }[]>();
+    const blockedByMap = new Map<string, { id: string; title: string }[]>();
+    const blocksMap = new Map<string, { id: string; title: string }[]>();
+
     if (ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
-      const rows = db
+
+      // Fetch labels
+      const labelRows = db
         .prepare(`SELECT issue_id, label FROM labels WHERE issue_id IN (${placeholders}) ORDER BY label;`)
         .all(...ids) as Array<{ issue_id: string; label: string }>;
 
-      for (const r of rows) {
+      for (const r of labelRows) {
         const arr = labelsByIssue.get(r.issue_id) ?? [];
         arr.push(r.label);
         labelsByIssue.set(r.issue_id, arr);
+      }
+
+      // Fetch all relevant dependencies where either side is in our issue list
+      // Note: We might miss titles if the "other side" isn't in 'ids' (filtered list?).
+      // Actually, 'issues' query above fetches ALL issues (no WHERE clause except deleted_at IS NULL).
+      // So 'ids' should check all.
+      
+      const allDeps = db.prepare(`
+        SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title
+        FROM dependencies d
+        JOIN issues i1 ON i1.id = d.issue_id
+        JOIN issues i2 ON i2.id = d.depends_on_id
+        WHERE d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders});
+      `).all(...ids, ...ids) as { issue_id: string; depends_on_id: string; type: string; issue_title: string; depends_title: string }[];
+
+      for (const d of allDeps) {
+        const child = { id: d.issue_id, title: d.issue_title };
+        const parent = { id: d.depends_on_id, title: d.depends_title };
+
+        if (d.type === 'parent-child') {
+          // issue_id is child, depends_on_id is parent
+          parentMap.set(d.issue_id, parent);
+          
+          const list = childrenMap.get(d.depends_on_id) ?? [];
+          list.push(child);
+          childrenMap.set(d.depends_on_id, list);
+        } else if (d.type === 'blocks') {
+          // issue_id is BLOCKED BY depends_on_id
+          const blockedByList = blockedByMap.get(d.issue_id) ?? [];
+          blockedByList.push(parent); // parent here is just the blocker (depends_on_id)
+          blockedByMap.set(d.issue_id, blockedByList);
+
+          const blocksList = blocksMap.get(d.depends_on_id) ?? [];
+          blocksList.push(child); // child here is the blocked one (issue_id)
+          blocksMap.set(d.depends_on_id, blocksList);
+        }
       }
     }
 
@@ -151,7 +208,11 @@ export class BeadsAdapter {
       external_ref: r.external_ref,
       is_ready: r.is_ready === 1,
       blocked_by_count: r.blocked_by_count,
-      labels: labelsByIssue.get(r.id) ?? []
+      labels: labelsByIssue.get(r.id) ?? [],
+      parent: parentMap.get(r.id),
+      children: childrenMap.get(r.id),
+      blocked_by: blockedByMap.get(r.id),
+      blocks: blocksMap.get(r.id)
     }));
 
     const columns: BoardColumn[] = [

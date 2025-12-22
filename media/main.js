@@ -212,11 +212,27 @@ function render() {
                 });
             }
             if (card.assignee) badges.push({ text: `@${card.assignee}` });
-            if ((card.blocked_by_count || 0) > 0) badges.push({ text: `blocked:${card.blocked_by_count}` });
+
+            // Blocked By logic
+            if (card.blocked_by && card.blocked_by.length > 0) {
+                badges.push({ text: `blocked by ${card.blocked_by.length}`, cls: 'badge-blocked' });
+            } else if ((card.blocked_by_count || 0) > 0) {
+                badges.push({ text: `blocked:${card.blocked_by_count}`, cls: 'badge-blocked' });
+            }
+
             if (card.external_ref) badges.push({ text: card.external_ref });
             for (const l of (card.labels || []).slice(0, 4)) badges.push({ text: `#${l}` });
 
+            // Parent info
+            let parentHtml = "";
+            if (card.parent) {
+                parentHtml = `<div class="cardParent" title="Parent: ${escapeHtml(card.parent.title)}">
+                    <span class="icon-parent">↳</span> ${escapeHtml(card.parent.title)}
+                </div>`;
+            }
+
             el.innerHTML = `
+        ${parentHtml}
         <div class="cardTitle">${escapeHtml(card.title)}</div>
         <div class="badges">${badges.map(b => `<span class="badge ${b.cls || ''}">${escapeHtml(b.text)}</span>`).join("")}</div>
       `;
@@ -303,12 +319,53 @@ function openDetail(card) {
         { label: "Updated", value: new Date(card.updated_at).toLocaleString() }
     ];
 
-    detMeta.innerHTML = fields.map(f =>
+    let metaHtml = fields.map(f =>
         `<div style="display:flex; flex-direction:column;">
            <span style="font-size:10px; color:var(--muted); text-transform:uppercase;">${f.label}</span>
            <span>${escapeHtml(f.value)}</span>
          </div>`
     ).join("");
+
+    // Relationships section
+    if (card.parent || (card.children && card.children.length) || (card.blocked_by && card.blocked_by.length) || (card.blocks && card.blocks.length)) {
+        metaHtml += `<div style="grid-column: 1 / -1; margin-top: 10px; border-top: 1px solid var(--border);"></div>`;
+
+        if (card.parent) {
+            metaHtml += `<div style="grid-column: 1 / -1; margin-top: 5px;">
+                <span style="font-size:10px; color:var(--muted); text-transform:uppercase;">Parent</span><br>
+                <span>${escapeHtml(card.parent.title)}</span>
+            </div>`;
+        }
+
+        if (card.children && card.children.length > 0) {
+            metaHtml += `<div style="grid-column: 1 / -1; margin-top: 5px;">
+                <span style="font-size:10px; color:var(--muted); text-transform:uppercase;">Children</span><br>
+                <ul style="margin:0; padding-left:15px;">
+                    ${card.children.map(c => `<li>${escapeHtml(c.title)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+
+        if (card.blocked_by && card.blocked_by.length > 0) {
+            metaHtml += `<div style="grid-column: 1 / -1; margin-top: 5px;">
+                <span style="font-size:10px; color:var(--muted); text-transform:uppercase;">Blocked By</span><br>
+                <ul style="margin:0; padding-left:15px; color: var(--error);">
+                    ${card.blocked_by.map(c => `<li>${escapeHtml(c.title)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+
+        if (card.blocks && card.blocks.length > 0) {
+            metaHtml += `<div style="grid-column: 1 / -1; margin-top: 5px;">
+                <span style="font-size:10px; color:var(--muted); text-transform:uppercase;">Blocks</span><br>
+                <ul style="margin:0; padding-left:15px;">
+                    ${card.blocks.map(c => `<li>${escapeHtml(c.title)}</li>`).join('')}
+                </ul>
+            </div>`;
+        }
+    }
+
+    detMeta.innerHTML = metaHtml;
 
     detDialog.showModal();
 }

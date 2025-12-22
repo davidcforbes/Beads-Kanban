@@ -37,6 +37,12 @@ export interface BoardCard {
   is_ready: boolean;
   blocked_by_count: number;
   labels: string[];
+
+  // Relationships
+  parent?: { id: string; title: string };
+  children?: { id: string; title: string }[];
+  blocks?: { id: string; title: string }[];
+  blocked_by?: { id: string; title: string }[];
 }
 
 export interface BoardColumn {
