@@ -1,0 +1,14 @@
+.vscode/**
+src/**
+**/*.map
+**/*.ts
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/example/**
+node_modules/**/examples/**
+node_modules/**/docs/**
+node_modules/**/.github/**
+.git/**
+.DS_Store
+*.log
+.beads/**

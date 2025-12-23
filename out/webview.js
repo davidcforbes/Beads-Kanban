@@ -51,11 +51,11 @@ function getWebviewHtml(webview, extensionUri) {
                  script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}" rel="stylesheet" />
-  <title>Beads Kanban</title>
+  <title>Agent Native Abstraction Layer for Beads</title>
 </head>
 <body>
   <header class="topbar">
-    <div class="title">Beads Kanban</div>
+    <div class="title">Agent Native Abstraction Layer for Beads</div>
     <div class="actions">
       <div class="filters" style="display:flex; gap:8px; margin-right: 12px;">
         <input id="filterSearch" type="text" placeholder="Search..." class="search-input" />

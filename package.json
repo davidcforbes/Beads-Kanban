@@ -1,9 +1,14 @@
 {
-  "name": "beads-kanban",
-  "displayName": "Beads Kanban",
-  "description": "Kanban board for Beads issues stored in .beads SQLite",
-  "version": "0.0.1",
-  "publisher": "your-org",
+  "name": "agent-native-kanban",
+  "displayName": "Agent Native Abstraction Layer for Beads",
+  "description": "Kanban board for Agent Native issues stored in .beads SQLite",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sebcook-ctrl/agent.native.activity.layer.beads.git"
+  },
+  "version": "0.0.2",
+  "publisher": "AgentNativeAbstractionLayer",
+  "icon": "./media/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -23,7 +28,7 @@
       }
     ],
     "configuration": {
-      "title": "Beads Kanban",
+      "title": "Agent Native Abstraction Layer for Beads",
       "properties": {
         "beadsKanban.readOnly": {
           "type": "boolean",
