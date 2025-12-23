@@ -158,15 +158,34 @@ body {
     padding: 0;
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
+    outline: none;
 }
 
 .dialogForm {
     padding: 14px;
     min-width: 480px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#detailDialog {
+    width: 900px;
+    height: 85vh;
+    max-width: 95vw;
+    max-height: 95vh;
+    overflow: hidden;
+    /* Form handles scroll */
+}
+
+/* Ensure contents can scroll if needed, but main layout is fixed */
+#detailDialog form {
+    overflow-y: auto;
 }
 
 .dialogForm input,
-.dialogForm textarea {
+.dialogForm textarea,
+.dialogForm select {
     width: 100%;
     margin: 6px 0 12px 0;
     background: rgba(255, 255, 255, 0.03);
@@ -174,6 +193,12 @@ body {
     color: inherit;
     border-radius: 10px;
     padding: 8px;
+}
+
+/* Ensure options also have dark background */
+.dialogForm select option {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
 }
 
 .dialogActions {

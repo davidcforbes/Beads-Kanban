@@ -379,24 +379,9 @@ function openDetail(card) {
             <hr style="border: 0; border-top: 1px solid var(--border); margin: 4px 0;">
 
             <div style="display: flex; gap: 12px; height: 300px;">
-                <div style="flex: 1; display: flex; flex-direction: column;">
-                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Description</label>
-                     <textarea id="editDesc" style="flex: 1; font-family: inherit; resize: none;">${safe(card.description)}</textarea>
-                </div>
-                <div style="flex: 1; display: flex; flex-direction: column;">
-                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Acceptance Criteria</label>
-                     <textarea id="editAC" style="flex: 1; font-family: inherit; resize: none;">${safe(card.acceptance_criteria)}</textarea>
-                </div>
-                <div style="flex: 1; display: flex; flex-direction: column;">
-                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Design Notes</label>
-                     <textarea id="editDesign" style="flex: 1; font-family: inherit; resize: none;">${safe(card.design)}</textarea>
-                </div>
-            </div>
-
-                <div style="flex: 1; display: flex; flex-direction: column;">
-                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Design Notes</label>
-                     <textarea id="editDesign" style="flex: 1; font-family: inherit; resize: none;">${safe(card.design)}</textarea>
-                </div>
+                ${createMarkdownField("Description", "editDesc", card.description)}
+                ${createMarkdownField("Acceptance Criteria", "editAC", card.acceptance_criteria)}
+                ${createMarkdownField("Design Notes", "editDesign", card.design)}
             </div>
 
             <!-- Relationships & Tags -->
@@ -621,6 +606,46 @@ ${card.design || 'None'}
         post("issue.copyToClipboard", { text: getContext() });
         toast("Copying...");
     };
+
+    // Markdown Field Helper
+    function createMarkdownField(label, id, value) {
+        // We use a unique ID for the preview container
+        const safeVal = safe(value);
+        return `
+            <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">${label}</label>
+                    <button type="button" class="btn icon-btn toggle-preview" data-target="${id}" style="font-size: 10px; padding: 2px 6px;">Preview</button>
+                </div>
+                <!-- Editor -->
+                <textarea id="${id}" style="flex: 1; font-family: inherit; resize: none; display: block;">${safeVal}</textarea>
+                <!-- Preview (Hidden by default) -->
+                <div id="${id}-preview" class="markdown-body" style="flex: 1; overflow-y: auto; display: none; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03);"></div>
+            </div>
+        `;
+    }
+
+    // Bind Toggle Events
+    form.querySelectorAll(".toggle-preview").forEach(btn => {
+        btn.onclick = (e) => {
+            const targetId = e.target.dataset.target;
+            const textarea = form.querySelector(`#${targetId}`);
+            const preview = form.querySelector(`#${targetId}-preview`);
+
+            if (textarea.style.display !== "none") {
+                // Swith to Preview
+                preview.innerHTML = marked.parse(textarea.value);
+                textarea.style.display = "none";
+                preview.style.display = "block";
+                e.target.textContent = "Edit";
+            } else {
+                // Switch to Edit
+                textarea.style.display = "block";
+                preview.style.display = "none";
+                e.target.textContent = "Preview";
+            }
+        };
+    });
 
     detDialog.showModal();
 }
