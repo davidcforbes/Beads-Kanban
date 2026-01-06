@@ -618,8 +618,9 @@ function openDetail(card) {
             </div>
 
             <!-- Relationships & Tags -->
+            ${!isCreateMode ? `
             <div style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
-                <div style="display: grid; grid-template-columns: ${isCreateMode ? '1fr' : '1fr 1fr'}; gap: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                          <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Tags</label>
                          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 0;">
@@ -635,7 +636,7 @@ function openDetail(card) {
                             <button id="btnAddLabel" class="btn" style="padding: 2px 8px;">+</button>
                          </div>
                     </div>
-                    ${!isCreateMode ? `<div>
+                    <div>
                          <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Structure</label>` : ''}
                          
                          <!-- Parent -->
@@ -688,9 +689,9 @@ function openDetail(card) {
                               `).join('')}
                             </ul>
                           ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted);">None</div>'}
-                    </div>` : ''}
+                    </div>
                 </div>
-            </div>
+            </div>` : ''}
 
             <!-- Event/Agent Metadata Panel (only shown when populated) -->
             ${(() => {

@@ -248,26 +248,6 @@ export function activate(context: vscode.ExtensionContext) {
       }
     };
 
-    // Rate limiting for mutation requests (max 10 mutations per second)
-    const mutationTimestamps: number[] = [];
-    const MAX_MUTATIONS_PER_SECOND = 10;
-    const RATE_LIMIT_WINDOW_MS = 1000;
-
-    const checkRateLimit = (): boolean => {
-      const now = Date.now();
-      // Remove timestamps outside the window
-      while (mutationTimestamps.length > 0 && mutationTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
-        mutationTimestamps.shift();
-      }
-
-      if (mutationTimestamps.length >= MAX_MUTATIONS_PER_SECOND) {
-        return false; // Rate limit exceeded
-      }
-
-      mutationTimestamps.push(now);
-      return true;
-    };
-
     panel.webview.onDidReceiveMessage(async (msg: WebMsg) => {
       if (!msg?.type || !msg.requestId) return;
 
@@ -278,16 +258,6 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (readOnly) {
         post({ type: "mutation.error", requestId: msg.requestId, error: "Extension is in read-only mode." });
-        return;
-      }
-
-      // Rate limiting check for database mutation requests
-      const mutationTypes = ["issue.create", "issue.move", "issue.update", "issue.addComment",
-                             "issue.addLabel", "issue.removeLabel", "issue.addDependency", "issue.removeDependency"];
-      const isMutation = mutationTypes.includes(msg.type as any);
-
-      if (isMutation && !checkRateLimit()) {
-        post({ type: "mutation.error", requestId: msg.requestId, error: `Rate limit exceeded. Maximum ${MAX_MUTATIONS_PER_SECOND} mutations per second allowed.` });
         return;
       }
 
@@ -461,9 +431,19 @@ export function activate(context: vscode.ExtensionContext) {
         if (refreshTimeout) {
           clearTimeout(refreshTimeout);
         }
-        refreshTimeout = setTimeout(() => {
-          const requestId = `fs-${Date.now()}`;
-          sendBoard(requestId);
+        refreshTimeout = setTimeout(async () => {
+          try {
+            // Reload database from disk to pick up external changes
+            await adapter.reloadDatabase();
+            const requestId = `fs-${Date.now()}`;
+            sendBoard(requestId);
+          } catch (error) {
+            panel.webview.postMessage({
+              type: "mutation.error",
+              requestId: `fs-error-${Date.now()}`,
+              error: `Failed to reload database: ${error instanceof Error ? error.message : String(error)}`
+            });
+          }
           refreshTimeout = null;
         }, 300);
       };

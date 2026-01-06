@@ -31,12 +31,10 @@ export class BeadsAdapter {
   private saveTimeout: NodeJS.Timeout | null = null;
   private isDirty = false;
   private isSaving = false;
-  private savePromise: Promise<void> | null = null; // Mutex lock for save operations
   private boardCache: any | null = null;
   private cacheTimestamp = 0;
   private lastSaveTime = 0;
   private lastKnownMtime = 0; // Track file modification time to detect external changes
-  private mutationVersion = 0; // Track mutation version to prevent race conditions in save
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -64,10 +62,6 @@ export class BeadsAdapter {
     }
     this.db = null;
     this.dbPath = null;
-
-    // Clear cache to prevent memory leak
-    this.boardCache = null;
-    this.cacheTimestamp = 0;
   }
 
   public async ensureConnected(): Promise<void> {
@@ -124,7 +118,7 @@ export class BeadsAdapter {
           this.output.appendLine(msg);
           this.db = db;
           this.dbPath = p;
-
+          
           // Track file modification time to detect external changes
           try {
             const stats = fs.statSync(p);
@@ -132,7 +126,7 @@ export class BeadsAdapter {
           } catch (e) {
             this.output.appendLine(`[BeadsAdapter] Warning: Could not read file stats: ${e}`);
           }
-
+          
           return;
         }
 
@@ -141,6 +135,53 @@ export class BeadsAdapter {
         const reason = `File opened but 'issues' table missing. Tables found: [${tableNames}]`;
 
         this.output.appendLine(`[BeadsAdapter] ${p}: ${reason}`);
+
+  /**
+   * Reload the database from disk to pick up external changes.
+   * Closes the current connection and re-reads the file.
+   */
+  public async reloadDatabase(): Promise<void> {
+    if (!this.dbPath) {
+      this.output.appendLine('[BeadsAdapter] reloadDatabase: No database path set, calling ensureConnected');
+      await this.ensureConnected();
+      return;
+    }
+
+    try {
+      this.output.appendLine(`[BeadsAdapter] Reloading database from ${this.dbPath}`);
+      
+      // Close current database if exists
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+
+      // Re-read the file and create new database instance
+      const SQL = await initSqlJs({
+        locateFile: (file) => path.join(__dirname, file)
+      });
+
+      const filebuffer = fs.readFileSync(this.dbPath);
+      const db = new SQL.Database(filebuffer);
+
+      // Verify issues table still exists
+      const res = db.exec("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='issues' LIMIT 1;");
+      
+      if (res.length === 0 || res[0].values.length === 0 || res[0].values[0][0] !== 1) {
+        db.close();
+        throw new Error('Database reloaded but issues table is missing');
+      }
+
+      this.db = db;
+      this.output.appendLine('[BeadsAdapter] Database reloaded successfully');
+    } catch (error) {
+      this.output.appendLine(`[BeadsAdapter] Failed to reload database: ${error instanceof Error ? error.message : String(error)}`);
+      // Try to reconnect from scratch
+      this.db = null;
+      this.dbPath = null;
+      await this.ensureConnected();
+    }
+  }
         failureReasons.push(`${path.basename(p)}: ${reason}`);
         
         db.close();
@@ -153,16 +194,7 @@ export class BeadsAdapter {
 
     const fullError = `Could not find a valid Beads DB in .beads. Searched: ${candidatePaths.map(x => path.basename(x)).join(', ')}. Details:\n${failureReasons.join('\n')}`;
     this.output.appendLine(`[BeadsAdapter] ERROR: ${fullError}`);
-
-    // Clear cache to prevent returning stale data after connection failure
-    this.boardCache = null;
-    this.cacheTimestamp = 0;
-
     throw new Error(fullError);
-  }
-
-  public getConnectedDbPath(): string | null {
-    return this.dbPath;
   }
 
   /**
@@ -170,11 +202,11 @@ export class BeadsAdapter {
    */
   private async hasFileChangedExternally(): Promise<boolean> {
     if (!this.dbPath || this.lastKnownMtime === 0) return false;
-
+    
     try {
       const stats = await fsPromises.stat(this.dbPath);
       const currentMtime = stats.mtimeMs;
-
+      
       // File has changed if mtime is different from what we know
       return currentMtime !== this.lastKnownMtime;
     } catch (error) {
@@ -243,23 +275,10 @@ export class BeadsAdapter {
       throw new Error(msg);
     }
   }
+  }
 
-  /**
-   * Batch large ID lists to prevent SQLite variable limit errors
-   * SQLite has a limit of ~999 variables per query (SQLITE_MAX_VARIABLE_NUMBER)
-   * @param ids Array of IDs to batch
-   * @param batchSize Maximum IDs per batch (default: 500)
-   * @returns Array of ID batches
-   */
-  private batchIds(ids: string[], batchSize: number = 500): string[][] {
-    if (ids.length === 0) return [];
-    
-    const batches: string[][] = [];
-    for (let i = 0; i < ids.length; i += batchSize) {
-      batches.push(ids.slice(i, i + batchSize));
-    }
-    
-    return batches;
+  public getConnectedDbPath(): string | null {
+    return this.dbPath;
   }
 
   public async getBoard(): Promise<BoardData> {
@@ -271,7 +290,7 @@ export class BeadsAdapter {
 
     if (!this.db) await this.ensureConnected();
     if (!this.db) throw new Error('Failed to connect to database');
-
+    
     // Check if database file was modified externally
     // If it was changed and it's not from our own save, reload from disk
     const fileChanged = await this.hasFileChangedExternally();
@@ -279,7 +298,6 @@ export class BeadsAdapter {
       this.output.appendLine('[BeadsAdapter] External database change detected, reloading from disk');
       await this.reloadFromDisk();
     }
-
     const db = this.db;
 
     // 1) Load issues + derived readiness and blockedness via views
@@ -361,133 +379,90 @@ export class BeadsAdapter {
     const commentsByIssue = new Map<string, Comment[]>();
 
     if (ids.length > 0) {
-      // Batch IDs to prevent SQLite variable limit errors (max ~999 variables)
-      const idBatches = this.batchIds(ids, 500);
+      const placeholders = ids.map(() => "?").join(",");
 
-      // Fetch labels in batches with event loop yields
-      for (let i = 0; i < idBatches.length; i++) {
-        try {
-          const batch = idBatches[i];
-          const placeholders = batch.map(() => "?").join(",");
-          const labelRows = this.queryAll(`SELECT issue_id, label FROM labels WHERE issue_id IN (${placeholders}) ORDER BY label;`, batch) as Array<{ issue_id: string; label: string }>;
+      // Fetch labels
+      const labelRows = this.queryAll(`SELECT issue_id, label FROM labels WHERE issue_id IN (${placeholders}) ORDER BY label;`, ids) as Array<{ issue_id: string; label: string }>;
 
-          for (const r of labelRows) {
-            const arr = labelsByIssue.get(r.issue_id) ?? [];
-            arr.push(r.label);
-            labelsByIssue.set(r.issue_id, arr);
-          }
-        } catch (error) {
-          this.output.appendLine(`[BeadsAdapter] WARNING: Failed to load labels for batch ${i + 1}/${idBatches.length}: ${error instanceof Error ? error.message : String(error)}`);
-          // Continue with remaining batches for partial functionality
-        }
-
-        // Yield to event loop between batches to prevent UI freezing
-        if (i < idBatches.length - 1) {
-          await new Promise(resolve => setImmediate(resolve));
-        }
+      for (const r of labelRows) {
+        const arr = labelsByIssue.get(r.issue_id) ?? [];
+        arr.push(r.label);
+        labelsByIssue.set(r.issue_id, arr);
       }
 
       // Fetch all relevant dependencies where either side is in our issue list
       // Note: We might miss titles if the "other side" isn't in 'ids' (filtered list?).
       // Actually, 'issues' query above fetches ALL issues (no WHERE clause except deleted_at IS NULL).
       // So 'ids' should check all.
+      
+      const allDeps = this.queryAll(`
+        SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+               d.created_at, d.created_by, d.metadata, d.thread_id
+        FROM dependencies d
+        JOIN issues i1 ON i1.id = d.issue_id
+        JOIN issues i2 ON i2.id = d.depends_on_id
+        WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
+      `, [...ids, ...ids]) as {
+        issue_id: string;
+        depends_on_id: string;
+        type: string;
+        issue_title: string;
+        depends_title: string;
+        created_at: string;
+        created_by: string;
+        metadata: string;
+        thread_id: string;
+      }[];
 
-      for (let i = 0; i < idBatches.length; i++) {
-        try {
-          const batch = idBatches[i];
-          const placeholders = batch.map(() => "?").join(",");
-          const allDeps = this.queryAll(`
-            SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
-                   d.created_at, d.created_by, d.metadata, d.thread_id
-            FROM dependencies d
-            JOIN issues i1 ON i1.id = d.issue_id
-            JOIN issues i2 ON i2.id = d.depends_on_id
-            WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
-          `, [...batch, ...batch]) as {
-            issue_id: string;
-            depends_on_id: string;
-            type: string;
-            issue_title: string;
-            depends_title: string;
-            created_at: string;
-            created_by: string;
-            metadata: string;
-            thread_id: string;
-          }[];
+      for (const d of allDeps) {
+        const child: DependencyInfo = {
+          id: d.issue_id,
+          title: d.issue_title,
+          created_at: d.created_at,
+          created_by: d.created_by,
+          metadata: d.metadata,
+          thread_id: d.thread_id
+        };
+        const parent: DependencyInfo = {
+          id: d.depends_on_id,
+          title: d.depends_title,
+          created_at: d.created_at,
+          created_by: d.created_by,
+          metadata: d.metadata,
+          thread_id: d.thread_id
+        };
 
-          for (const d of allDeps) {
-            const child: DependencyInfo = {
-              id: d.issue_id,
-              title: d.issue_title,
-              created_at: d.created_at,
-              created_by: d.created_by,
-              metadata: d.metadata,
-              thread_id: d.thread_id
-            };
-            const parent: DependencyInfo = {
-              id: d.depends_on_id,
-              title: d.depends_title,
-              created_at: d.created_at,
-              created_by: d.created_by,
-              metadata: d.metadata,
-              thread_id: d.thread_id
-            };
+        if (d.type === 'parent-child') {
+          // issue_id is child, depends_on_id is parent
+          parentMap.set(d.issue_id, parent);
+          
+          const list = childrenMap.get(d.depends_on_id) ?? [];
+          list.push(child);
+          childrenMap.set(d.depends_on_id, list);
+        } else if (d.type === 'blocks') {
+          // issue_id is BLOCKED BY depends_on_id
+          const blockedByList = blockedByMap.get(d.issue_id) ?? [];
+          blockedByList.push(parent); // parent here is just the blocker (depends_on_id)
+          blockedByMap.set(d.issue_id, blockedByList);
 
-            if (d.type === 'parent-child') {
-              // issue_id is child, depends_on_id is parent
-              parentMap.set(d.issue_id, parent);
-
-              const list = childrenMap.get(d.depends_on_id) ?? [];
-              list.push(child);
-              childrenMap.set(d.depends_on_id, list);
-            } else if (d.type === 'blocks') {
-              // issue_id is BLOCKED BY depends_on_id
-              const blockedByList = blockedByMap.get(d.issue_id) ?? [];
-              blockedByList.push(parent); // parent here is just the blocker (depends_on_id)
-              blockedByMap.set(d.issue_id, blockedByList);
-
-              const blocksList = blocksMap.get(d.depends_on_id) ?? [];
-              blocksList.push(child); // child here is the blocked one (issue_id)
-              blocksMap.set(d.depends_on_id, blocksList);
-            }
-          }
-        } catch (error) {
-          this.output.appendLine(`[BeadsAdapter] WARNING: Failed to load dependencies for batch ${i + 1}/${idBatches.length}: ${error instanceof Error ? error.message : String(error)}`);
-          // Continue with remaining batches for partial functionality
-        }
-
-        // Yield to event loop between batches to prevent UI freezing
-        if (i < idBatches.length - 1) {
-          await new Promise(resolve => setImmediate(resolve));
+          const blocksList = blocksMap.get(d.depends_on_id) ?? [];
+          blocksList.push(child); // child here is the blocked one (issue_id)
+          blocksMap.set(d.depends_on_id, blocksList);
         }
       }
+      
+      // Fetch comments for these issues
+      const allComments = this.queryAll(`
+        SELECT id, issue_id, author, text, created_at
+        FROM comments
+        WHERE issue_id IN (${placeholders})
+        ORDER BY created_at ASC;
+      `, ids) as Comment[];
 
-      // Fetch comments for these issues in batches with event loop yields
-      for (let i = 0; i < idBatches.length; i++) {
-        try {
-          const batch = idBatches[i];
-          const placeholders = batch.map(() => "?").join(",");
-          const allComments = this.queryAll(`
-            SELECT id, issue_id, author, text, created_at
-            FROM comments
-            WHERE issue_id IN (${placeholders})
-            ORDER BY created_at ASC;
-          `, batch) as Comment[];
-
-          for (const c of allComments) {
-            const list = commentsByIssue.get(c.issue_id) ?? [];
-            list.push(c);
-            commentsByIssue.set(c.issue_id, list);
-          }
-        } catch (error) {
-          this.output.appendLine(`[BeadsAdapter] WARNING: Failed to load comments for batch ${i + 1}/${idBatches.length}: ${error instanceof Error ? error.message : String(error)}`);
-          // Continue with remaining batches for partial functionality
-        }
-
-        // Yield to event loop between batches to prevent UI freezing
-        if (i < idBatches.length - 1) {
-          await new Promise(resolve => setImmediate(resolve));
-        }
+      for (const c of allComments) {
+        const list = commentsByIssue.get(c.issue_id) ?? [];
+        list.push(c);
+        commentsByIssue.set(c.issue_id, list);
       }
     }
 
@@ -590,7 +565,7 @@ export class BeadsAdapter {
     const dueAt = input.due_at ?? null;
     const deferUntil = input.defer_until ?? null;
 
-    await this.runQuery(`
+    this.runQuery(`
       INSERT INTO issues (
         id, title, description, status, priority, issue_type, assignee, estimated_minutes,
         acceptance_criteria, design, notes, external_ref, due_at, defer_until
@@ -609,7 +584,7 @@ export class BeadsAdapter {
 
     // Enforce closed_at CHECK constraint properly
     if (toStatus === "closed") {
-      await this.runQuery(`
+      this.runQuery(`
         UPDATE issues
         SET status='closed',
             closed_at=CURRENT_TIMESTAMP,
@@ -620,7 +595,7 @@ export class BeadsAdapter {
       return;
     }
 
-    await this.runQuery(`
+    this.runQuery(`
       UPDATE issues
       SET status = ?,
       closed_at = NULL,
@@ -647,26 +622,9 @@ export class BeadsAdapter {
   }): Promise<void> {
     if (!this.db) await this.ensureConnected();
 
-    // Defense-in-depth: Whitelist of allowed field names to prevent SQL injection
-    // if this code is ever refactored to use Object.keys(updates)
-    const ALLOWED_FIELDS = new Set([
-      'title', 'description', 'priority', 'issue_type', 'assignee',
-      'estimated_minutes', 'acceptance_criteria', 'design', 'external_ref',
-      'notes', 'due_at', 'defer_until', 'status'
-    ]);
-
-    // Validate that no unexpected fields are present
-    for (const key of Object.keys(updates)) {
-      if (!ALLOWED_FIELDS.has(key)) {
-        throw new Error(`Invalid field name: ${key}`);
-      }
-    }
-
     const fields: string[] = [];
     const values: any[] = [];
 
-    // NOTE: We explicitly check each field rather than iterating Object.keys()
-    // to ensure field names are hardcoded and cannot be controlled by attacker
     if (updates.title !== undefined) { fields.push("title = ?"); values.push(updates.title); }
     if (updates.description !== undefined) { fields.push("description = ?"); values.push(updates.description); }
     if (updates.priority !== undefined) { fields.push("priority = ?"); values.push(updates.priority); }
@@ -695,7 +653,7 @@ export class BeadsAdapter {
 
     values.push(id);
 
-    await this.runQuery(`
+    this.runQuery(`
       UPDATE issues
       SET ${fields.join(", ")}
       WHERE id = ? AND deleted_at IS NULL;
@@ -704,8 +662,8 @@ export class BeadsAdapter {
 
   public async addComment(issueId: string, text: string, author: string): Promise<void> {
     if (!this.db) await this.ensureConnected();
-
-    await this.runQuery(`
+    
+    this.runQuery(`
       INSERT INTO comments (issue_id, author, text)
       VALUES (?, ?, ?);
     `, [issueId, author, text]);
@@ -713,17 +671,17 @@ export class BeadsAdapter {
 
   public async addLabel(issueId: string, label: string): Promise<void> {
     if (!this.db) await this.ensureConnected();
-    await this.runQuery("INSERT OR IGNORE INTO labels (issue_id, label) VALUES (?, ?)", [issueId, label]);
+    this.runQuery("INSERT OR IGNORE INTO labels (issue_id, label) VALUES (?, ?)", [issueId, label]);
   }
 
   public async removeLabel(issueId: string, label: string): Promise<void> {
     if (!this.db) await this.ensureConnected();
-    await this.runQuery("DELETE FROM labels WHERE issue_id = ? AND label = ?", [issueId, label]);
+    this.runQuery("DELETE FROM labels WHERE issue_id = ? AND label = ?", [issueId, label]);
   }
 
   public async addDependency(issueId: string, dependsOnId: string, type: 'parent-child' | 'blocks' = 'blocks'): Promise<void> {
     if (!this.db) await this.ensureConnected();
-    await this.runQuery(`
+    this.runQuery(`
       INSERT OR IGNORE INTO dependencies (issue_id, depends_on_id, type, created_by)
       VALUES (?, ?, ?, 'extension');
     `, [issueId, dependsOnId, type]);
@@ -731,7 +689,7 @@ export class BeadsAdapter {
 
   public async removeDependency(issueId: string, dependsOnId: string): Promise<void> {
     if (!this.db) await this.ensureConnected();
-    await this.runQuery("DELETE FROM dependencies WHERE issue_id = ? AND depends_on_id = ?", [issueId, dependsOnId]);
+    this.runQuery("DELETE FROM dependencies WHERE issue_id = ? AND depends_on_id = ?", [issueId, dependsOnId]);
   }
 
 
@@ -742,15 +700,14 @@ export class BeadsAdapter {
       const data = this.db.export();
       const buffer = Buffer.from(data);
 
-      // Set lastSaveTime BEFORE writing to prevent file watcher race condition
-      // File watcher may fire immediately after rename, so we need timestamp set first
-      this.lastSaveTime = Date.now();
-
       // Atomic write: write to temp file then rename
       const tmpPath = this.dbPath + '.tmp';
       fs.writeFileSync(tmpPath, buffer);
       fs.renameSync(tmpPath, this.dbPath);
 
+      // Track save time to avoid reloading our own writes
+      this.lastSaveTime = Date.now();
+      
       // Update mtime tracking
       try {
         const stats = fs.statSync(this.dbPath);
@@ -782,31 +739,17 @@ export class BeadsAdapter {
     this.saveTimeout = setTimeout(() => {
       // Prevent concurrent saves
       if (this.isDirty && !this.isSaving) {
-        // Capture mutation version BEFORE save to detect concurrent mutations
-        const versionAtSaveStart = this.mutationVersion;
-
+        this.isDirty = false;  // Clear dirty flag before saving
         this.isSaving = true;
-
-        // Create a promise that resolves when save completes (for mutex lock)
-        this.savePromise = new Promise<void>((resolve) => {
-          try {
-            this.save();
-
-            // Only clear dirty flag if no mutations happened during save
-            // If mutationVersion changed during save(), it means a new mutation occurred
-            // and we should NOT clear the dirty flag
-            if (this.mutationVersion === versionAtSaveStart) {
-              this.isDirty = false;
-            }
-          } catch (error) {
-            // If save failed, leave isDirty=true so we retry
-            // Error already logged and shown in save()
-          } finally {
-            this.isSaving = false;
-            this.savePromise = null;
-            resolve();
-          }
-        });
+        try {
+          this.save();
+        } catch (error) {
+          // If save failed, mark as dirty again
+          this.isDirty = true;
+          // Error already logged and shown in save()
+        } finally {
+          this.isSaving = false;
+        }
       }
       this.saveTimeout = null;
     }, 300); // 300ms debounce - prevents excessive file writes
@@ -834,29 +777,21 @@ export class BeadsAdapter {
       }
   }
 
-  private async runQuery(sql: string, params: any[] = []): Promise<void> {
-      // Wait for any in-progress save to complete before mutating (mutex lock)
-      if (this.savePromise) {
-        await this.savePromise;
-      }
-
+  private runQuery(sql: string, params: any[] = []) {
       if (!this.db) {
         this.output.appendLine('[BeadsAdapter] Database not connected in runQuery, attempting reconnect...');
         throw new Error('Database not connected. Please reload the extension.');
       }
-
+      
       // Note: db.run() automatically frees prepared statements in sql.js
       // If you need to use db.prepare() manually in the future, you MUST call stmt.free()
       this.db.run(sql, params);
-
-      // Track mutation version to detect concurrent mutations during save
-      this.mutationVersion++;
       this.isDirty = true;
-
+      
       // Invalidate cache on mutation
       this.boardCache = null;
       this.cacheTimestamp = 0;
-
+      
       this.scheduleSave();
   }
 }
