@@ -1,36 +1,52 @@
 # Beads Kanban
 
-A VS Code extension that provides a Kanban board interface for managing issues stored in a `.beads` SQLite database within your workspace.
+A VS Code extension that provides a Kanban board for issues stored in a `.beads` SQLite database, with an optional daemon-backed adapter that uses the `bd` CLI.
 
 ## Features
 
-- **Kanban Board Visualization**: View issues in columns based on their status (Open, In Progress, Blocked, Ready, Closed).
-- **Drag-and-Drop**: Move issues between columns to update their status.
-- **Detailed Issue Editing**:
-    - Edit Title, Description, Acceptance Criteria, and Design Notes.
-    - Markdown Preview support for long-text fields.
-    - Manage Status, Priority, Type, Assignee, Estimated Minutes, and External References.
-- **Comments**: View and add comments to issues directly from the board.
-- **Organization**:
-    - **Labels**: Add tagging to issues.
-    - **Dependencies**: Manage Parent-Child and Blocking relationships.
-- **Filtering**: Filter the board by Priority, Issue Type, or text search.
-- **Theme Aware**: Fully integrated with your VS Code theme (Light/Dark modes).
+- **Columns**: Ready, In Progress, Blocked, Closed. Ready maps to `open` issues that appear in the `ready_issues` view; open issues that are not ready are shown in Blocked.
+- **Drag-and-drop**: Move issues between columns to update their status.
+- **Unified create/edit dialog**:
+  - Fields: title, description, acceptance criteria, design, notes, status, priority, type, assignee, estimate, external ref, due/defer dates.
+  - Markdown preview for long-text fields.
+- **Comments**: View and add comments.
+- **Labels and dependencies**: Parent-child and blocks relationships with unlink actions.
+- **Filtering**: Priority, type, and search filters.
+- **Context actions**: Add to Chat and Copy Context.
+- **Flags and scheduling**: Pinned/template/ephemeral badges and due/defer indicators.
+- **Daemon status bar**: Status, health, restart/stop, and logs when daemon integration is enabled.
 
 ## Usage
 
-1.  **Open the Board**: Run the command `Beads: Open Kanban Board` from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-2.  **Create Issue**: Click the "New" button in the top bar.
-3.  **Edit Issue**: Click on any card to open the detail dialog.
-    - **Preview Markdown**: Use the "Preview" button above text fields to render markdown.
-    - **Add Comment**: Scroll to the bottom of the dialog to post comments.
-    - **Manage Tags/Structure**: Use the dedicated sections in the dialog to add tags or set dependencies.
+1. Open the board: `Beads: Open Kanban Board` from the Command Palette.
+2. Create an issue: click **New**.
+3. Edit an issue: click a card to open the detail dialog.
+   - Use **Preview** to render Markdown fields.
+   - Scroll to **Comments** to post a new comment.
+   - Use **Labels** and **Structure** sections to manage tags and dependencies.
 
-## Data Storage
+## Configuration
 
-All data is stored in a SQLite database located in `.beads/beads.db` (or similar) within your workspace root. The extension automatically detects and connects to this database.
+- `beadsKanban.readOnly`: Disable mutations (create/move/update).
+- `beadsKanban.useDaemonAdapter`: Use the `bd` daemon adapter instead of the in-memory SQLite adapter (requires `bd` daemon).
+
+## Data Sources and Adapters
+
+### Default adapter (sql.js)
+- Loads `.beads/*.db` into memory via sql.js.
+- Executes queries in-memory and writes changes back to disk with a debounced, atomic save.
+- Watches `.beads/**/*.db` for external changes and reloads the DB.
+
+### Daemon adapter (bd CLI)
+- Uses `bd list --json` and `bd show --json` to fetch issue data.
+- Uses `bd` commands for create/update/move/comment/label/dependency operations.
+- Caches board data briefly to reduce CLI overhead.
 
 ## Development
 
 - **Compile**: `npm run compile`
 - **Watch**: `npm run watch`
+- **Lint**: `npm run lint`
+- **Test**: `npm test`
+
+Note: `npm run compile` currently relies on a `cp` command in `copy-deps`, so on Windows use a shell that provides `cp` (Git Bash or WSL) until the script is made cross-platform.
