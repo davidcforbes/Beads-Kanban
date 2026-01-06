@@ -618,8 +618,10 @@ function openDetail(card) {
                 </div>
             </div>
             
-            <div style="font-size: 10px; color: var(--muted); text-align: right; margin-top: 8px;">
-               ID: ${card.id} | Created: ${new Date(card.created_at).toLocaleString()}
+            <div style="font-size: 10px; color: var(--muted); text-align: right; margin-top: 8px; line-height: 1.5;">
+               ID: ${card.id}<br>
+               Created: ${new Date(card.created_at).toLocaleString()}<br>
+               Updated: ${new Date(card.updated_at).toLocaleString()}${card.closed_at ? `<br>Closed: ${new Date(card.closed_at).toLocaleString()}` : ''}
             </div>
         </div>
     `;
