@@ -19,6 +19,7 @@ export interface IssueRow {
   external_ref: string | null;
   acceptance_criteria: string;
   design: string;
+  notes: string;
   due_at: string | null;
   defer_until: string | null;
 
@@ -62,6 +63,7 @@ export interface BoardCard {
   external_ref?: string | null;
   acceptance_criteria: string;
   design: string;
+  notes: string;
   due_at?: string | null;
   defer_until?: string | null;
 
@@ -137,6 +139,7 @@ export const IssueUpdateSchema = z.object({
     estimated_minutes: z.number().int().min(0).nullable().optional(),
     acceptance_criteria: z.string().max(10000).optional(),
     design: z.string().max(10000).optional(),
+    notes: z.string().max(10000).optional(),
     external_ref: z.string().max(200).optional(),
     due_at: z.string().nullable().optional(),
     defer_until: z.string().nullable().optional()

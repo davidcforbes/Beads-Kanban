@@ -464,6 +464,7 @@ function openDetail(card) {
                 ${createMarkdownField("Description", "editDesc", card.description)}
                 ${createMarkdownField("Acceptance Criteria", "editAC", card.acceptance_criteria)}
                 ${createMarkdownField("Design Notes", "editDesign", card.design)}
+                ${createMarkdownField("Notes", "editNotes", card.notes)}
             </div>
 
             <!-- Relationships & Tags -->
@@ -635,7 +636,8 @@ function openDetail(card) {
             defer_until: document.getElementById("editDeferUntil").value ? new Date(document.getElementById("editDeferUntil").value).toISOString() : null,
             description: document.getElementById("editDesc").value,
             acceptance_criteria: document.getElementById("editAC").value,
-            design: document.getElementById("editDesign").value
+            design: document.getElementById("editDesign").value,
+            notes: document.getElementById("editNotes").value
         };
 
         if (updates.title) {
