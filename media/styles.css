@@ -201,6 +201,11 @@ body {
     color: var(--vscode-editor-foreground);
 }
 
+/* Narrow input for estimate minutes */
+.input-estimate {
+    max-width: 100px;
+}
+
 .dialogActions {
     display: flex;
     justify-content: flex-end;

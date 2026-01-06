@@ -302,18 +302,10 @@ function render() {
 
                 if (!id || !toColumn) return;
 
-                // If moved to a different position or column
-                if (toColumn !== fromColumn || evt.newIndex !== evt.oldIndex) {
+                // Only post if status changed (column changed)
+                // Ignore reordering within same column since order is not persisted in DB
+                if (toColumn !== fromColumn) {
                     post("issue.move", { id, toColumn });
-
-                    // Simple undo toast if moved between columns (optional, kept from original logic)
-                    if (fromColumn !== toColumn) {
-                        // We don't implement full undo logic with Sortable easily here since state updates shortly,
-                        // but we can keep the toast notification.
-                        // Logic from original was:
-                        // toast(`Moved to ${toColumn}`, "Undo", () => { ... });
-                        // But for now let's just notify.
-                    }
                 }
             }
         });
@@ -560,7 +552,7 @@ function openDetail(card) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                  <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Est. Minutes</label>
-                    <input id="editEst" type="number" value="${card.estimated_minutes || ''}" placeholder="Min" style="width: 100%; margin-top: 4px;" />
+                    <input id="editEst" type="number" value="${card.estimated_minutes || ''}" placeholder="Min" class="input-estimate" style="margin-top: 4px;" />
                 </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Ext Ref</label>
