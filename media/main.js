@@ -24,6 +24,26 @@ const filterSearch = document.getElementById("filterSearch");
 
 let boardData = null;
 const collapsedColumns = new Set();
+let activeRequests = 0;
+
+// Loading indicator helpers
+function showLoading() {
+    activeRequests++;
+    const loader = document.getElementById('loadingOverlay');
+    if (loader) {
+        loader.style.display = 'flex';
+    }
+}
+
+function hideLoading() {
+    activeRequests = Math.max(0, activeRequests - 1);
+    if (activeRequests === 0) {
+        const loader = document.getElementById('loadingOverlay');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    }
+}
 
 // Configure DOMPurify for safe HTML sanitization
 const purifyConfig = {
@@ -40,8 +60,33 @@ if (typeof marked !== 'undefined') {
     });
 }
 
+// Request/response tracking for async operations
+const pendingRequests = new Map();
+
 function requestId() {
     return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// Post with promise support
+function postAsync(type, payload) {
+    showLoading();
+    return new Promise((resolve, reject) => {
+        const reqId = requestId();
+        pendingRequests.set(reqId, { resolve, reject });
+        vscode.postMessage({ type, requestId: reqId, payload });
+        
+        // Timeout after 30 seconds
+        setTimeout(() => {
+            if (pendingRequests.has(reqId)) {
+                pendingRequests.delete(reqId);
+                hideLoading();
+                reject(new Error('Request timeout'));
+            }
+        }, 30000);
+    }).finally(() => {
+        hideLoading();
+    });
+}-${Math.random().toString(16).slice(2)}`;
 }
 
 function post(type, payload) {
@@ -351,16 +396,35 @@ window.addEventListener("message", (event) => {
     if (msg.type === "board.data") {
         boardData = msg.payload;
         render();
+        
+        // Resolve any pending request waiting for board data
+        if (msg.requestId && pendingRequests.has(msg.requestId)) {
+            const { resolve } = pendingRequests.get(msg.requestId);
+            pendingRequests.delete(msg.requestId);
+            resolve(msg.payload);
+        }
         return;
     }
 
     if (msg.type === "mutation.error") {
         toast(msg.error || "Operation failed.");
+        
+        // Reject pending request
+        if (msg.requestId && pendingRequests.has(msg.requestId)) {
+            const { reject } = pendingRequests.get(msg.requestId);
+            pendingRequests.delete(msg.requestId);
+            reject(new Error(msg.error || "Operation failed"));
+        }
         return;
     }
 
     if (msg.type === "mutation.ok") {
-        // no-op; board refresh usually follows
+        // Resolve pending request
+        if (msg.requestId && pendingRequests.has(msg.requestId)) {
+            const { resolve } = pendingRequests.get(msg.requestId);
+            pendingRequests.delete(msg.requestId);
+            resolve();
+        }
         return;
     }
 });
@@ -632,7 +696,7 @@ function openDetail(card) {
         detDialog.close();
     };
 
-    form.querySelector("#btnSave").onclick = (e) => {
+    form.querySelector("#btnSave").onclick = async (e) => {
         e.preventDefault();
         const updates = {
             title: document.getElementById("editTitle").value.trim(),
@@ -651,83 +715,113 @@ function openDetail(card) {
         };
 
         if (updates.title) {
-            post("issue.update", { id: card.id, updates });
-            // Optimistic close? Or wait for refresh. Let's wait for refresh but close dialog now for responsiveness
-            detDialog.close();
+            try {
+                await postAsync("issue.update", { id: card.id, updates });
+                toast("Changes saved successfully");
+                detDialog.close();
+            } catch (err) {
+                // Error already shown via mutation.error toast
+                console.error("Save failed:", err);
+            }
         } else {
             toast("Title is required");
         }
     };
 
-    form.querySelector("#btnPostComment").onclick = (e) => {
+    form.querySelector("#btnPostComment").onclick = async (e) => {
         e.preventDefault();
         const text = form.querySelector("#newCommentText").value.trim();
         if (!text) return;
 
-        post("issue.addComment", { id: card.id, text, author: "Me" });
-        detDialog.close();
-        toast("Comment posted");
+        try {
+            await postAsync("issue.addComment", { id: card.id, text, author: "Me" });
+            toast("Comment posted");
+            detDialog.close();
+        } catch (err) {
+            console.error("Add comment failed:", err);
+        }
     };
 
     // Label Events
-    form.querySelector("#btnAddLabel").onclick = (e) => {
+    form.querySelector("#btnAddLabel").onclick = async (e) => {
         e.preventDefault();
         const label = form.querySelector("#newLabel").value.trim();
         if (!label) return;
-        post("issue.addLabel", { id: card.id, label });
-        detDialog.close();
-        toast("Label added");
+        try {
+            await postAsync("issue.addLabel", { id: card.id, label });
+            toast("Label added");
+            detDialog.close();
+        } catch (err) {
+            console.error("Add label failed:", err);
+        }
     };
 
     form.querySelectorAll(".remove-label").forEach(btn => {
-        btn.onclick = (e) => {
+        btn.onclick = async (e) => {
             const label = e.target.dataset.label;
-            post("issue.removeLabel", { id: card.id, label });
-            detDialog.close(); // Refresh
+            try {
+                await postAsync("issue.removeLabel", { id: card.id, label });
+                toast("Label removed");
+                detDialog.close();
+            } catch (err) {
+                console.error("Remove label failed:", err);
+            }
         };
     });
 
     // Dependency Events
     const btnSetParent = form.querySelector("#btnSetParent");
     if (btnSetParent) {
-        btnSetParent.onclick = (e) => {
+        btnSetParent.onclick = async (e) => {
             e.preventDefault();
             const parentId = form.querySelector("#newParentId").value.trim();
             if (!parentId) return;
-            // card is child, parentId is parent
-            post("issue.addDependency", { id: card.id, otherId: parentId, type: 'parent-child' });
-            detDialog.close();
-            toast("Parent set");
+            try {
+                await postAsync("issue.addDependency", { id: card.id, otherId: parentId, type: 'parent-child' });
+                toast("Parent set");
+                detDialog.close();
+            } catch (err) {
+                console.error("Set parent failed:", err);
+            }
         };
     }
 
     const removeParentBtn = form.querySelector("#removeParent");
     if (removeParentBtn) {
-        removeParentBtn.onclick = (e) => {
-            // Remove dependency where card=id and depends_on=parent.id
-            post("issue.removeDependency", { id: card.id, otherId: card.parent.id });
-            detDialog.close();
-            toast("Parent unlink");
+        removeParentBtn.onclick = async (e) => {
+            try {
+                await postAsync("issue.removeDependency", { id: card.id, otherId: card.parent.id });
+                toast("Parent unlinked");
+                detDialog.close();
+            } catch (err) {
+                console.error("Remove parent failed:", err);
+            }
         };
     }
 
-    form.querySelector("#btnAddBlocker").onclick = (e) => {
+    form.querySelector("#btnAddBlocker").onclick = async (e) => {
         e.preventDefault();
         const blockerId = form.querySelector("#newBlockerId").value.trim();
         if (!blockerId) return;
-        // card BLOCKED BY blockerId => card depends on blockerId (type=blocks)
-        // Wait, schema: (issue_id, depends_on_id, type='blocks')
-        // Interpretation: issue_id IS BLOCKED BY depends_on_id.
-        post("issue.addDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
-        detDialog.close();
-        toast("Blocker added");
+        try {
+            await postAsync("issue.addDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
+            toast("Blocker added");
+            detDialog.close();
+        } catch (err) {
+            console.error("Add blocker failed:", err);
+        }
     };
 
     form.querySelectorAll(".remove-blocker").forEach(btn => {
-        btn.onclick = (e) => {
+        btn.onclick = async (e) => {
             const blockerId = e.target.dataset.id;
-            post("issue.removeDependency", { id: card.id, otherId: blockerId });
-            detDialog.close();
+            try {
+                await postAsync("issue.removeDependency", { id: card.id, otherId: blockerId });
+                toast("Blocker removed");
+                detDialog.close();
+            } catch (err) {
+                console.error("Remove blocker failed:", err);
+            }
         };
     });
 

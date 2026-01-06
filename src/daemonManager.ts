@@ -148,7 +148,9 @@ export class DaemonManager {
    */
   async getLogs(lines: number = 50): Promise<string> {
     try {
-      const { stdout } = await execAsync(`bd daemons logs . -n ${lines}`, { cwd: this.workspaceRoot });
+      // Validate lines parameter to prevent command injection
+      const safeLines = Math.max(1, Math.min(1000, Math.floor(lines)));
+      const { stdout } = await execAsync(`bd daemons logs . -n ${safeLines}`, { cwd: this.workspaceRoot });
       return stdout;
     } catch (error) {
       return error instanceof Error ? error.message : 'Failed to get logs';

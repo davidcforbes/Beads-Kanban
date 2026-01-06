@@ -18,7 +18,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
                  img-src ${webview.cspSource};
-                 style-src ${webview.cspSource} 'unsafe-inline';
+                 style-src ${webview.cspSource};
                  script-src 'nonce-${nonce}';
                  base-uri 'none';
                  frame-ancestors 'none';
@@ -31,7 +31,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   <header class="topbar">
     <div class="title">Agent Native Abstraction Layer for Beads</div>
     <div class="actions">
-      <div class="filters" style="display:flex; gap:8px; margin-right: 12px;">
+      <div class="filters">
         <input id="filterSearch" type="text" placeholder="Search..." class="search-input" />
         <select id="filterPriority" class="select">
            <option value="">Priority: All</option>
@@ -72,14 +72,14 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
   <dialog id="detailDialog" class="dialog">
     <form method="dialog" class="dialogForm">
-      <h3 id="detTitle" style="margin-top:0"></h3>
-      <div id="detMeta" class="badges" style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+      <h3 id="detTitle" class="detTitle"></h3>
+      <div id="detMeta" class="badges detMeta">
         <!-- Populated via JS -->
       </div>
-      <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0;">
-      <div id="detDesc" style="white-space: pre-wrap; font-family: inherit; opacity: 0.9;"></div>
-      <div class="dialogActions" style="margin-top: 16px;">
-        <div style="margin-right: auto; display: flex; gap: 8px;">
+      <hr class="detHr">
+      <div id="detDesc" class="detDesc"></div>
+      <div class="dialogActions detActions">
+        <div class="actionButtons">
             <button id="addToChatBtn" class="btn">Add to Chat</button>
             <button id="copyContextBtn" class="btn">Copy Context</button>
         </div>
@@ -89,6 +89,10 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
+
+  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-spinner"></div>
+  </div>
 
   <script nonce="${nonce}" src="${dompurifyUri}"></script>
   <script nonce="${nonce}" src="${sortableUri}"></script>

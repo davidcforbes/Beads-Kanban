@@ -29,6 +29,9 @@ export class BeadsAdapter {
   private dbPath: string | null = null;
   private saveTimeout: NodeJS.Timeout | null = null;
   private isDirty = false;
+  private isSaving = false;
+  private boardCache: any | null = null;
+  private cacheTimestamp = 0;
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -140,6 +143,12 @@ export class BeadsAdapter {
   }
 
   public async getBoard(): Promise<BoardData> {
+    // Check cache (valid for 1 second to reduce DB queries during rapid operations)
+    const now = Date.now();
+    if (this.boardCache && (now - this.cacheTimestamp) < 1000) {
+      return this.boardCache;
+    }
+
     if (!this.db) await this.ensureConnected();
     if (!this.db) throw new Error('Failed to connect to database');
     const db = this.db;
@@ -239,7 +248,7 @@ export class BeadsAdapter {
         FROM dependencies d
         JOIN issues i1 ON i1.id = d.issue_id
         JOIN issues i2 ON i2.id = d.depends_on_id
-        WHERE d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders});
+        WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
       `, [...ids, ...ids]) as {
         issue_id: string;
         depends_on_id: string;
@@ -358,7 +367,13 @@ export class BeadsAdapter {
       { key: "closed", title: "Closed" }
     ];
 
-    return { columns, cards };
+    const boardData = { columns, cards };
+    
+    // Update cache
+    this.boardCache = boardData;
+    this.cacheTimestamp = Date.now();
+    
+    return boardData;
   }
 
   public async createIssue(input: {
@@ -431,6 +446,10 @@ export class BeadsAdapter {
     acceptance_criteria?: string;
     design?: string;
     external_ref?: string | null;
+    notes?: string;
+    due_at?: string | null;
+    defer_until?: string | null;
+    status?: string;
   }): Promise<void> {
     if (!this.db) await this.ensureConnected();
 
@@ -446,6 +465,10 @@ export class BeadsAdapter {
     if (updates.acceptance_criteria !== undefined) { fields.push("acceptance_criteria = ?"); values.push(updates.acceptance_criteria); }
     if (updates.design !== undefined) { fields.push("design = ?"); values.push(updates.design); }
     if (updates.external_ref !== undefined) { fields.push("external_ref = ?"); values.push(updates.external_ref); }
+    if (updates.notes !== undefined) { fields.push("notes = ?"); values.push(updates.notes); }
+    if (updates.due_at !== undefined) { fields.push("due_at = ?"); values.push(updates.due_at); }
+    if (updates.defer_until !== undefined) { fields.push("defer_until = ?"); values.push(updates.defer_until); }
+    if (updates.status !== undefined) { fields.push("status = ?"); values.push(updates.status); }
 
     if (fields.length === 0) return;
 
@@ -526,36 +549,61 @@ export class BeadsAdapter {
 
     // Schedule a new save after 100ms
     this.saveTimeout = setTimeout(() => {
-      if (this.isDirty) {
+      // Prevent concurrent saves
+      if (this.isDirty && !this.isSaving) {
+        this.isDirty = false;  // Clear dirty flag before saving
+        this.isSaving = true;
         try {
           this.save();
-          this.isDirty = false;
         } catch (error) {
+          // If save failed, mark as dirty again
+          this.isDirty = true;
           // Error already logged and shown in save()
+        } finally {
+          this.isSaving = false;
         }
       }
       this.saveTimeout = null;
-    }, 100); // 100ms debounce
+    }, 300); // 300ms debounce - prevents excessive file writes
   }
 
   private queryAll(sql: string, params: any[] = []): any[] {
-      if (!this.db) return [];
-      const stmt = this.db.prepare(sql);
-      stmt.bind(params);
-      const rows = [];
-      while (stmt.step()) {
-          rows.push(stmt.getAsObject());
+      if (!this.db) {
+        this.output.appendLine('[BeadsAdapter] Database not connected in queryAll, attempting reconnect...');
+        throw new Error('Database not connected. Please reload the extension.');
       }
-      stmt.free();
-      return rows;
+      
+      let stmt;
+      try {
+        stmt = this.db.prepare(sql);
+        stmt.bind(params);
+        const rows = [];
+        while (stmt.step()) {
+            rows.push(stmt.getAsObject());
+        }
+        return rows;
+      } finally {
+        if (stmt) {
+          stmt.free();
+        }
+      }
   }
 
   private runQuery(sql: string, params: any[] = []) {
-      if (!this.db) return;
+      if (!this.db) {
+        this.output.appendLine('[BeadsAdapter] Database not connected in runQuery, attempting reconnect...');
+        throw new Error('Database not connected. Please reload the extension.');
+      }
+      
       // Note: db.run() automatically frees prepared statements in sql.js
       // If you need to use db.prepare() manually in the future, you MUST call stmt.free()
       this.db.run(sql, params);
       this.isDirty = true;
+      
+      // Invalidate cache on mutation
+      this.boardCache = null;
+      this.cacheTimestamp = 0;
+      
       this.scheduleSave();
   }
 }

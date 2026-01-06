@@ -48,8 +48,25 @@ function sanitizeError(error: unknown): string {
     .replace(/\\[^\s]+\.(ts|js|tsx|jsx)/g, '[FILE]')
     .replace(/\s+at\s+.*/g, ''); // Remove stack trace lines
   
-  // Return a generic message if nothing is left or if it looks like implementation details
-  if (sanitized.trim().length === 0 || sanitized.includes('ENOENT') || sanitized.includes('EACCES')) {
+  // Provide specific error messages for common cases
+  if (sanitized.includes('ENOENT')) {
+    return 'Database file not found. Please ensure .beads directory exists.';
+  }
+  if (sanitized.includes('EACCES')) {
+    return 'Permission denied accessing database file.';
+  }
+  if (sanitized.includes('SQLITE_BUSY')) {
+    return 'Database is busy. Please try again.';
+  }
+  if (sanitized.includes('not connected') || sanitized.includes('Database not connected')) {
+    return 'Database connection lost. Please refresh the board.';
+  }
+  if (sanitized.includes('Invalid') || sanitized.includes('validation')) {
+    return sanitized.trim(); // Keep validation errors as they're user-friendly
+  }
+  
+  // Return generic message only if truly empty or unrecognizable
+  if (sanitized.trim().length === 0) {
     return 'An error occurred while processing your request.';
   }
   
