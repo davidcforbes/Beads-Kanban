@@ -94,8 +94,6 @@ function postAsync(type, payload) {
         // Always call hideLoading exactly once per showLoading
         hideLoading();
     });
-}-${Math.random().toString(16).slice(2)}`;
-}
 
 function post(type, payload) {
     vscode.postMessage({ type, requestId: requestId(), payload });
@@ -488,7 +486,7 @@ function openDetail(card) {
         { v: "closed", l: "Closed" }
     ];
 
-    const typeOptions = ["task", "bug", "feature"];
+    const typeOptions = ["task", "bug", "feature", "epic", "chore"];
     const priorityOptions = [0, 1, 2, 3, 4];
 
     form.innerHTML = `

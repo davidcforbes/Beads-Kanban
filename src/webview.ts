@@ -42,9 +42,11 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
         </select>
         <select id="filterType" class="select">
            <option value="">Type: All</option>
-           <option value="bug">Bug</option>
            <option value="task">Task</option>
+           <option value="bug">Bug</option>
            <option value="feature">Feature</option>
+           <option value="epic">Epic</option>
+           <option value="chore">Chore</option>
         </select>
       </div>
       <button id="refreshBtn" class="btn">Refresh</button>
