@@ -92,6 +92,10 @@ function columnForCard(card) {
 
 function render() {
     if (!boardData) return;
+    if (!boardData.columns || !boardData.cards) {
+        console.error('Invalid boardData: missing columns or cards');
+        return;
+    }
 
     const columns = boardData.columns;
     const cards = boardData.cards;

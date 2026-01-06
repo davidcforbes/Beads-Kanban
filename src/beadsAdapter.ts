@@ -53,7 +53,20 @@ export class BeadsAdapter {
     const candidatePaths = fs
       .readdirSync(beadsDir)
       .filter((f) => /\.(db|sqlite|sqlite3)$/i.test(f))
-      .map((f) => path.join(beadsDir, f));
+      .map((f) => path.join(beadsDir, f))
+      .filter((p) => {
+        try {
+          const stats = fs.lstatSync(p);
+          if (stats.isSymbolicLink()) {
+            this.output.appendLine(`[BeadsAdapter] Skipping symlink: ${p}`);
+            return false;
+          }
+          return true;
+        } catch (e) {
+          this.output.appendLine(`[BeadsAdapter] Error checking ${p}: ${e}`);
+          return false;
+        }
+      });
 
     if (candidatePaths.length === 0) {
       throw new Error("No SQLite database file found in .beads (expected *.db/*.sqlite/*.sqlite3).");
