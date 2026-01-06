@@ -241,7 +241,7 @@ function render() {
             el.addEventListener("click", () => openDetail(card));
 
             const badges = [];
-            badges.push({ text: `P${card.priority}` });
+            badges.push({ text: `P${card.priority}`, cls: `badge-priority-${card.priority}` });
             if (card.issue_type) {
                 badges.push({
                     text: card.issue_type,
@@ -249,6 +249,14 @@ function render() {
                 });
             }
             if (card.assignee) badges.push({ text: `@${card.assignee}` });
+            if (card.estimated_minutes) {
+                const hours = Math.floor(card.estimated_minutes / 60);
+                const mins = card.estimated_minutes % 60;
+                let timeStr = '';
+                if (hours > 0) timeStr += `${hours}h`;
+                if (mins > 0) timeStr += `${mins}m`;
+                badges.push({ text: `⏱ ${timeStr}`, cls: 'badge-estimate' });
+            }
 
             // Blocked By logic
             if (card.blocked_by && card.blocked_by.length > 0) {
