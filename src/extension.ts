@@ -118,12 +118,25 @@ export function activate(context: vscode.ExtensionContext) {
       }
     };
 
-    // Initial status check
-    updateDaemonStatus();
+    // Track active panels and polling state
+    let activePanelCount = 0;
+    let pollInterval: NodeJS.Timeout | null = null;
 
-    // Poll status every 10 seconds
-    const pollInterval = setInterval(updateDaemonStatus, 10000);
-    context.subscriptions.push({ dispose: () => clearInterval(pollInterval) });
+    const startDaemonPolling = () => {
+      if (pollInterval) return; // Already polling
+      updateDaemonStatus(); // Initial check
+      pollInterval = setInterval(updateDaemonStatus, 10000);
+    };
+
+    const stopDaemonPolling = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
+    // Cleanup on extension deactivation
+    context.subscriptions.push({ dispose: stopDaemonPolling });
 
     // Register daemon actions command
     context.subscriptions.push(
@@ -211,6 +224,12 @@ export function activate(context: vscode.ExtensionContext) {
         retainContextWhenHidden: true
       }
     );
+
+    // Track panel lifecycle for daemon polling optimization
+    activePanelCount++;
+    if (activePanelCount === 1) {
+      startDaemonPolling(); // Start polling when first panel opens
+    }
 
     panel.webview.html = getWebviewHtml(panel.webview, context.extensionUri);
 
@@ -402,6 +421,11 @@ export function activate(context: vscode.ExtensionContext) {
       );
       let refreshTimeout: NodeJS.Timeout | null = null;
       const refresh = () => {
+        // Skip refresh if this change is from our own save operation
+        if (adapter.isRecentSelfSave()) {
+          return;
+        }
+        
         if (refreshTimeout) {
           clearTimeout(refreshTimeout);
         }
@@ -419,6 +443,12 @@ export function activate(context: vscode.ExtensionContext) {
           clearTimeout(refreshTimeout);
         }
         watcher.dispose();
+
+        // Stop polling when last panel closes
+        activePanelCount--;
+        if (activePanelCount === 0) {
+          stopDaemonPolling();
+        }
       });
     }
 

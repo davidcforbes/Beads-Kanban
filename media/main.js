@@ -49,7 +49,9 @@ function hideLoading() {
 const purifyConfig = {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
     ALLOWED_ATTR: ['href', 'title', 'class'],
-    ALLOW_DATA_ATTR: false
+    ALLOW_DATA_ATTR: false,
+    // Prevent XSS via javascript: URIs - only allow safe protocols
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
 };
 
 // Configure marked to use GFM breaks
@@ -70,20 +72,26 @@ function requestId() {
 // Post with promise support
 function postAsync(type, payload) {
     showLoading();
+    let timeoutId;
     return new Promise((resolve, reject) => {
         const reqId = requestId();
         pendingRequests.set(reqId, { resolve, reject });
         vscode.postMessage({ type, requestId: reqId, payload });
         
         // Timeout after 30 seconds
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
             if (pendingRequests.has(reqId)) {
                 pendingRequests.delete(reqId);
-                hideLoading();
+                // Don't call hideLoading here - let finally block handle it
                 reject(new Error('Request timeout'));
             }
         }, 30000);
     }).finally(() => {
+        // Clear timeout to prevent memory leak
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        // Always call hideLoading exactly once per showLoading
         hideLoading();
     });
 }-${Math.random().toString(16).slice(2)}`;
@@ -91,6 +99,21 @@ function postAsync(type, payload) {
 
 function post(type, payload) {
     vscode.postMessage({ type, requestId: requestId(), payload });
+}
+
+function toLocalDateTimeInput(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toIsoFromLocalInput(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
 }
 
 function toast(msg, actionName, actionCb) {
@@ -293,7 +316,12 @@ function render() {
                     cls: `badge-type-${card.issue_type}`
                 });
             }
-            if (card.assignee) badges.push({ text: `@${card.assignee}` });
+            // Assignee badge positioned right after type
+            if (card.assignee) {
+                badges.push({ text: `Assignee: ${card.assignee}`, cls: 'badge-assignee' });
+            } else {
+                badges.push({ text: 'Assignee: Unassigned', cls: 'badge-assignee badge-unassigned' });
+            }
             if (card.estimated_minutes) {
                 const hours = Math.floor(card.estimated_minutes / 60);
                 const mins = card.estimated_minutes % 60;
@@ -511,11 +539,11 @@ function openDetail(card) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
                  <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Due At</label>
-                    <input id="editDueAt" type="datetime-local" value="${card.due_at ? new Date(card.due_at).toISOString().slice(0, 16) : ''}" style="width: 100%; margin-top: 4px;" />
+                    <input id="editDueAt" type="datetime-local" value="${toLocalDateTimeInput(card.due_at)}" style="width: 100%; margin-top: 4px;" />
                 </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Defer Until</label>
-                    <input id="editDeferUntil" type="datetime-local" value="${card.defer_until ? new Date(card.defer_until).toISOString().slice(0, 16) : ''}" style="width: 100%; margin-top: 4px;" />
+                    <input id="editDeferUntil" type="datetime-local" value="${toLocalDateTimeInput(card.defer_until)}" style="width: 100%; margin-top: 4px;" />
                 </div>
             </div>
 
@@ -706,8 +734,8 @@ function openDetail(card) {
             assignee: document.getElementById("editAssignee").value.trim() || null,
             estimated_minutes: document.getElementById("editEst").value ? parseInt(document.getElementById("editEst").value) : null,
             external_ref: document.getElementById("editExtRef").value.trim() || null,
-            due_at: document.getElementById("editDueAt").value ? new Date(document.getElementById("editDueAt").value).toISOString() : null,
-            defer_until: document.getElementById("editDeferUntil").value ? new Date(document.getElementById("editDeferUntil").value).toISOString() : null,
+            due_at: toIsoFromLocalInput(document.getElementById("editDueAt").value),
+            defer_until: toIsoFromLocalInput(document.getElementById("editDeferUntil").value),
             description: document.getElementById("editDesc").value,
             acceptance_criteria: document.getElementById("editAC").value,
             design: document.getElementById("editDesign").value,
@@ -720,8 +748,9 @@ function openDetail(card) {
                 toast("Changes saved successfully");
                 detDialog.close();
             } catch (err) {
-                // Error already shown via mutation.error toast
+                // Show error feedback (mutation.error toast or timeout/network error)
                 console.error("Save failed:", err);
+                toast(`Failed to save changes: ${err.message}`);
             }
         } else {
             toast("Title is required");
@@ -739,21 +768,53 @@ function openDetail(card) {
             detDialog.close();
         } catch (err) {
             console.error("Add comment failed:", err);
+            toast(`Failed to add comment: ${err.message}`);
         }
     };
 
-    // Label Events
+    // Label Events - supports comma-separated multiple labels
     form.querySelector("#btnAddLabel").onclick = async (e) => {
         e.preventDefault();
-        const label = form.querySelector("#newLabel").value.trim();
-        if (!label) return;
-        try {
-            await postAsync("issue.addLabel", { id: card.id, label });
-            toast("Label added");
-            detDialog.close();
-        } catch (err) {
-            console.error("Add label failed:", err);
+        const input = form.querySelector("#newLabel");
+        const rawLabels = input.value.trim();
+        if (!rawLabels) return;
+
+        // Split by comma, trim, filter empties, and dedupe
+        const labels = [...new Set(
+            rawLabels.split(',')
+                .map(l => l.trim())
+                .filter(l => l.length > 0)
+        )];
+
+        if (labels.length === 0) return;
+
+        let successCount = 0;
+        let failedLabels = [];
+
+        // Add each label
+        for (const label of labels) {
+            try {
+                await postAsync("issue.addLabel", { id: card.id, label });
+                successCount++;
+            } catch (err) {
+                console.error(`Add label '${label}' failed:`, err);
+                failedLabels.push(label);
+            }
         }
+
+        // Show feedback
+        if (successCount > 0) {
+            toast(`Added ${successCount} label${successCount > 1 ? 's' : ''}`);
+            input.value = ''; // Clear input on success
+            // Trigger board refresh to show new labels
+            postAsync("board.refresh", {});
+        }
+
+        if (failedLabels.length > 0) {
+            toast(`Failed to add: ${failedLabels.join(', ')}`);
+        }
+
+        // Keep dialog open for adding more labels
     };
 
     form.querySelectorAll(".remove-label").forEach(btn => {
@@ -762,9 +823,11 @@ function openDetail(card) {
             try {
                 await postAsync("issue.removeLabel", { id: card.id, label });
                 toast("Label removed");
-                detDialog.close();
+                // Keep dialog open and refresh to show updated labels
+                postAsync("board.refresh", {});
             } catch (err) {
                 console.error("Remove label failed:", err);
+                toast(`Failed to remove label: ${err.message}`);
             }
         };
     });
@@ -782,6 +845,7 @@ function openDetail(card) {
                 detDialog.close();
             } catch (err) {
                 console.error("Set parent failed:", err);
+                toast(`Failed to set parent: ${err.message}`);
             }
         };
     }
@@ -790,11 +854,12 @@ function openDetail(card) {
     if (removeParentBtn) {
         removeParentBtn.onclick = async (e) => {
             try {
-                await postAsync("issue.removeDependency", { id: card.id, otherId: card.parent.id });
+                await postAsync("issue.removeDependency", { id: card.id, otherId: card.parent.id, type: 'parent-child' });
                 toast("Parent unlinked");
                 detDialog.close();
             } catch (err) {
                 console.error("Remove parent failed:", err);
+                toast(`Failed to remove parent: ${err.message}`);
             }
         };
     }
@@ -809,6 +874,7 @@ function openDetail(card) {
             detDialog.close();
         } catch (err) {
             console.error("Add blocker failed:", err);
+            toast(`Failed to add blocker: ${err.message}`);
         }
     };
 
@@ -816,11 +882,12 @@ function openDetail(card) {
         btn.onclick = async (e) => {
             const blockerId = e.target.dataset.id;
             try {
-                await postAsync("issue.removeDependency", { id: card.id, otherId: blockerId });
+                await postAsync("issue.removeDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
                 toast("Blocker removed");
                 detDialog.close();
             } catch (err) {
                 console.error("Remove blocker failed:", err);
+                toast(`Failed to remove blocker: ${err.message}`);
             }
         };
     });

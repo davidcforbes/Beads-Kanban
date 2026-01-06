@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { promises as fsPromises } from "fs";
 import * as path from "path";
 import initSqlJs, { Database, QueryExecResult } from "sql.js";
 import * as vscode from "vscode";
@@ -30,8 +31,10 @@ export class BeadsAdapter {
   private saveTimeout: NodeJS.Timeout | null = null;
   private isDirty = false;
   private isSaving = false;
+  private boardCache: any |  private isSaving = false;
   private boardCache: any | null = null;
   private cacheTimestamp = 0;
+  private lastSaveTime = 0;
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -42,10 +45,10 @@ export class BeadsAdapter {
       this.saveTimeout = null;
     }
 
-    // Flush any pending changes before disposing
+    // Flush any pending changes before disposing (use sync version for disposal)
     if (this.isDirty && this.db && this.dbPath) {
       try {
-        this.save();
+        this.saveSync();
         this.isDirty = false;
       } catch (error) {
         this.output.appendLine(`[BeadsAdapter] Failed to flush changes on dispose: ${error}`);
@@ -59,6 +62,11 @@ export class BeadsAdapter {
     }
     this.db = null;
     this.dbPath = null;
+
+    // Clear cache on disposal
+    this.boardCache = null;
+    this.cacheTimestamp = 0;
+    this.lastSaveTime = 0;
   }
 
   public async ensureConnected(): Promise<void> {
@@ -202,6 +210,12 @@ export class BeadsAdapter {
       `) as IssueRow[];
 
     const ids = issues.map((i) => i.id);
+
+    // Validate issue count to prevent resource exhaustion
+    if (ids.length > 50000) {
+      this.output.appendLine(`[BeadsAdapter] WARNING: ${ids.length} issues found, which may cause performance issues`);
+      throw new Error(`Too many issues (${ids.length}). This extension supports up to 50,000 issues. Consider archiving closed issues.`);
+    }
 
     // 2) Bulk load labels
     const labelsByIssue = new Map<string, string[]>();
@@ -516,7 +530,39 @@ export class BeadsAdapter {
   }
 
 
-  private save(): void {
+  private async save(): Promise<void> {
+    if (!this.db || !this.dbPath) return;
+
+    try {
+      const data = this.db.export();
+      const buffer = Buffer.from(data);
+
+      // Atomic write: write to temp file then rename (now async to prevent blocking)
+      const tmpPath = this.dbPath + '.tmp';
+      await fsPromises.writeFile(tmpPath, buffer);
+      await fsPromises.rename(tmpPath, this.dbPath);
+
+      // Track successful save timestamp to prevent file watcher loops
+      this.lastSaveTime = Date.now();
+
+      this.output.appendLine('[BeadsAdapter] Database saved successfully');
+    } catch (error) {
+      const msg = `Failed to save database: ${error instanceof Error ? error.message : String(error)}`;
+      this.output.appendLine(`[BeadsAdapter] ERROR: ${msg}`);
+
+      // Show user-visible error (sanitized)
+      vscode.window.showErrorMessage(`Beads Kanban: ${sanitizeError(error)}`);
+
+      // Re-throw to prevent silent data loss
+      throw new Error(msg);
+    }
+  }
+
+  /**
+   * Synchronous save for use during disposal only
+   * Regular saves should use async save() to avoid blocking
+   */
+  private saveSync(): void {
     if (!this.db || !this.dbPath) return;
 
     try {
@@ -528,7 +574,10 @@ export class BeadsAdapter {
       fs.writeFileSync(tmpPath, buffer);
       fs.renameSync(tmpPath, this.dbPath);
 
-      this.output.appendLine('[BeadsAdapter] Database saved successfully');
+      // Track successful save timestamp
+      this.lastSaveTime = Date.now();
+
+      this.output.appendLine('[BeadsAdapter] Database saved synchronously');
     } catch (error) {
       const msg = `Failed to save database: ${error instanceof Error ? error.message : String(error)}`;
       this.output.appendLine(`[BeadsAdapter] ERROR: ${msg}`);
@@ -547,17 +596,17 @@ export class BeadsAdapter {
       clearTimeout(this.saveTimeout);
     }
 
-    // Schedule a new save after 100ms
-    this.saveTimeout = setTimeout(() => {
+    // Schedule a new save after 300ms
+    this.saveTimeout = setTimeout(async () => {
       // Prevent concurrent saves
       if (this.isDirty && !this.isSaving) {
-        this.isDirty = false;  // Clear dirty flag before saving
         this.isSaving = true;
         try {
-          this.save();
+          await this.save();
+          // Only clear isDirty AFTER successful save to prevent data loss
+          this.isDirty = false;
         } catch (error) {
-          // If save failed, mark as dirty again
-          this.isDirty = true;
+          // If save failed, keep isDirty = true so we retry
           // Error already logged and shown in save()
         } finally {
           this.isSaving = false;

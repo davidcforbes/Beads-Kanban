@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -24,7 +26,34 @@ export class DaemonManager {
   private workspaceRoot: string;
 
   constructor(workspaceRoot: string) {
-    this.workspaceRoot = workspaceRoot;
+    // Validate and normalize workspace path to prevent command injection
+    if (!workspaceRoot || typeof workspaceRoot !== 'string') {
+      throw new Error('Invalid workspace root: must be a non-empty string');
+    }
+    
+    // Normalize the path to resolve any relative paths or path traversal attempts
+    const normalized = path.resolve(workspaceRoot);
+    
+    // Validate that the path exists and is a directory
+    try {
+      const stats = fs.statSync(normalized);
+      if (!stats.isDirectory()) {
+        throw new Error(`Invalid workspace root: ${normalized} is not a directory`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Invalid workspace root: ${normalized} does not exist`);
+      }
+      throw error;
+    }
+    
+    // Additional check: ensure path doesn't contain dangerous characters
+    // While cwd is relatively safe, this prevents edge cases
+    if (/[;&|`$()]/.test(normalized)) {
+      throw new Error('Invalid workspace root: path contains potentially dangerous characters');
+    }
+    
+    this.workspaceRoot = normalized;
   }
 
   /**
@@ -32,30 +61,20 @@ export class DaemonManager {
    */
   async getStatus(): Promise<DaemonStatus> {
     try {
-      // Run: bd info | grep daemon
-      const { stdout } = await execAsync('bd info', { cwd: this.workspaceRoot });
-
-      // Parse daemon info from output
-      const lines = stdout.split('\n');
-      const daemonLine = lines.find(line => line.toLowerCase().includes('daemon'));
-
-      if (!daemonLine) {
+      const { stdout } = await execAsync('bd info --json', { cwd: this.workspaceRoot });
+      if (!stdout.trim()) {
         return { running: false, healthy: false };
       }
 
-      // Check if daemon is running
-      const running = daemonLine.toLowerCase().includes('running') ||
-                     daemonLine.toLowerCase().includes('enabled');
-
-      // Extract PID if present (format: "daemon: running (pid 12345)")
-      const pidMatch = daemonLine.match(/pid[:\s]+(\d+)/i);
-      const pid = pidMatch ? parseInt(pidMatch[1]) : undefined;
+      const info = JSON.parse(stdout);
+      const running = Boolean(info.daemon_connected);
+      const healthy = running && info.daemon_status === 'healthy';
 
       return {
         running,
-        pid,
-        healthy: running,
-        workspace: this.workspaceRoot
+        healthy,
+        workspace: this.workspaceRoot,
+        version: info.daemon_version
       };
     } catch (error) {
       return {
