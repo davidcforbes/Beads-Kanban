@@ -23,7 +23,14 @@ const filterType = document.getElementById("filterType");
 const filterSearch = document.getElementById("filterSearch");
 
 let boardData = null;
-const collapsedColumns = new Set();
+// Restore collapsed columns state from VS Code persisted state
+const vscodeState = vscode.getState() || {};
+const collapsedColumns = new Set(vscodeState.collapsedColumns || []);
+
+// Helper to persist collapsed columns state
+function saveCollapsedColumnsState() {
+    vscode.setState({ ...vscode.getState(), collapsedColumns: [...collapsedColumns] });
+}
 let activeRequests = 0;
 
 // Loading indicator helpers
@@ -246,6 +253,7 @@ function render() {
             } else {
                 collapsedColumns.add(col.key);
             }
+            saveCollapsedColumnsState();
             render();
         };
 
