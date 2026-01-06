@@ -137,9 +137,13 @@ export class DaemonBeadsAdapter {
       return this.boardCache;
     }
 
+    // Read pagination limit from configuration
+    const maxIssues = vscode.workspace.getConfiguration('beadsKanban').get<number>('maxIssues', 1000);
+
     try {
-      // Step 1: Get all issues (basic data)
-      const basicIssues = await this.execBd(['list', '--json', '--all', '--limit', '0']);
+      // Step 1: Get limited issues (basic data)
+      // Request maxIssues + 1 to detect if there are more
+      const basicIssues = await this.execBd(['list', '--json', '--all', '--limit', String(maxIssues + 1)]);
       
       if (!Array.isArray(basicIssues) || basicIssues.length === 0) {
         // Return empty board if no issues
@@ -155,6 +159,22 @@ export class DaemonBeadsAdapter {
         this.boardCache = emptyBoard;
         this.cacheTimestamp = Date.now();
         return emptyBoard;
+      }
+
+      // Check if we hit the pagination limit
+      const hasMoreIssues = basicIssues.length > maxIssues;
+      if (hasMoreIssues) {
+        // Trim to the actual limit
+        basicIssues.length = maxIssues;
+        this.output.appendLine(`[DaemonBeadsAdapter] Loaded ${maxIssues} issues (more available). Increase beadsKanban.maxIssues setting to show more.`);
+        vscode.window.showInformationMessage(
+          `Beads Kanban: Showing ${maxIssues} most recent issues. Increase the maxIssues setting to show more.`,
+          'Open Settings'
+        ).then(action => {
+          if (action === 'Open Settings') {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'beadsKanban.maxIssues');
+          }
+        });
       }
 
       // Step 2: Get full details for all issues (includes dependents/relationships)
@@ -182,6 +202,39 @@ export class DaemonBeadsAdapter {
       return boardData;
     } catch (error) {
       throw new Error(`Failed to get board data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get comments for a specific issue (lazy-loaded on demand).
+   * This method is called when the user opens the detail dialog for an issue.
+   */
+  public async getIssueComments(issueId: string): Promise<Comment[]> {
+    try {
+      // Fetch full issue details including comments
+      const result = await this.execBd(['show', '--json', issueId]);
+
+      if (!Array.isArray(result) || result.length === 0) {
+        return [];
+      }
+
+      const issue = result[0];
+      
+      // Extract and map comments
+      if (issue.comments && Array.isArray(issue.comments)) {
+        return issue.comments.map((c: any) => ({
+          id: c.id,
+          issue_id: issueId,
+          author: c.author || 'unknown',
+          text: c.text || '',
+          created_at: c.created_at
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      this.output.appendLine(`[DaemonBeadsAdapter] Failed to get comments for ${issueId}: ${error}`);
+      return [];
     }
   }
 
@@ -262,18 +315,10 @@ export class DaemonBeadsAdapter {
       if (issue.labels && Array.isArray(issue.labels)) {
         labels = issue.labels.map((l: any) => typeof l === 'string' ? l : l.label);
       }
-      
-      // Map comments
-      let comments: Comment[] = [];
-      if (issue.comments && Array.isArray(issue.comments)) {
-        comments = issue.comments.map((c: any) => ({
-          id: c.id,
-          issue_id: issue.id,
-          author: c.author || 'unknown',
-          text: c.text || '',
-          created_at: c.created_at
-        }));
-      }
+
+      // Comments are lazy-loaded on demand (see getIssueComments method)
+      // bd show returns comments, but we don't include them in board data
+      const comments: Comment[] = [];
 
       const card: BoardCard = {
         id: issue.id,

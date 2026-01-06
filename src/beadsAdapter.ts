@@ -161,7 +161,47 @@ export class BeadsAdapter {
    * Reload the database from disk to pick up external changes.
    * Closes the current connection and re-reads the file.
    */
+  /**
+   * Flushes any pending saves to disk to prevent data loss during reload.
+   * This method ensures that:
+   * 1. Any scheduled saves are executed immediately
+   * 2. Any in-progress saves are allowed to complete
+   * 3. No dirty data is lost when reloading from disk
+   */
+  private async flushPendingSaves(): Promise<void> {
+    // Cancel any scheduled save and execute immediately if needed
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
+    // If we have dirty data and aren't currently saving, save now
+    if (this.isDirty && !this.isSaving) {
+      this.isDirty = false;
+      this.isSaving = true;
+      try {
+        this.save();
+      } catch (error) {
+        // If save failed, mark as dirty again
+        this.isDirty = true;
+        throw error; // Re-throw to prevent reload after failed save
+      } finally {
+        this.isSaving = false;
+      }
+    }
+
+    // If save is in progress (shouldn't happen but be defensive), wait for it
+    while (this.isSaving) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    this.output.appendLine('[BeadsAdapter] Pending saves flushed successfully');
+  }
+
   public async reloadDatabase(): Promise<void> {
+    // CRITICAL: Flush any pending saves before reloading to prevent data loss
+    await this.flushPendingSaves();
+
     if (!this.dbPath) {
       this.output.appendLine('[BeadsAdapter] reloadDatabase: No database path set, calling ensureConnected');
       await this.ensureConnected();
@@ -242,23 +282,16 @@ export class BeadsAdapter {
   }
 
   /**
-   * Reload the database from disk, discarding in-memory changes
-   * CAUTION: This loses any unsaved mutations
+   * Reload the database from disk.
+   * Pending saves are flushed first to prevent data loss.
    */
   private async reloadFromDisk(): Promise<void> {
     if (!this.dbPath) {
       throw new Error('Cannot reload: No database path set');
     }
 
-    // Warn if we're about to lose unsaved changes
-    if (this.isDirty) {
-      this.output.appendLine('[BeadsAdapter] WARNING: Reloading from disk will discard unsaved changes!');
-      // Show user warning
-      vscode.window.showWarningMessage(
-        'Beads Kanban: Database was modified externally. Discarding unsaved changes to prevent data loss.',
-        'OK'
-      );
-    }
+    // CRITICAL: Flush any pending saves before reloading to prevent data loss
+    await this.flushPendingSaves();
 
     try {
       // Close existing database
@@ -267,7 +300,7 @@ export class BeadsAdapter {
         this.db = null;
       }
 
-      // Clear dirty flag since we're abandoning changes
+      // Clear cache - pending changes were already flushed
       this.isDirty = false;
       this.boardCache = null;
 
@@ -305,7 +338,7 @@ export class BeadsAdapter {
 
     if (!this.db) await this.ensureConnected();
     if (!this.db) throw new Error('Failed to connect to database');
-    
+
     // Check if database file was modified externally
     // If it was changed and it's not from our own save, reload from disk
     const fileChanged = await this.hasFileChangedExternally();
@@ -314,6 +347,9 @@ export class BeadsAdapter {
       await this.reloadFromDisk();
     }
     const db = this.db;
+
+    // Read pagination limit from configuration
+    const maxIssues = vscode.workspace.getConfiguration('beadsKanban').get<number>('maxIssues', 1000);
 
     // 1) Load issues + derived readiness and blockedness via views
     const issues = this.queryAll(`
@@ -360,16 +396,27 @@ export class BeadsAdapter {
         LEFT JOIN ready_issues ri ON ri.id = i.id
         LEFT JOIN blocked_issues bi ON bi.id = i.id
         WHERE i.deleted_at IS NULL
-        ORDER BY i.priority ASC, i.updated_at DESC, i.created_at DESC;
+        ORDER BY i.priority ASC, i.updated_at DESC, i.created_at DESC
+        LIMIT ${maxIssues + 1};
       `) as IssueRow[];
 
-    const ids = issues.map((i) => i.id);
-
-    // Validate issue count to prevent resource exhaustion
-    if (ids.length > 50000) {
-      this.output.appendLine(`[BeadsAdapter] WARNING: ${ids.length} issues found, which may cause performance issues`);
-      throw new Error(`Too many issues (${ids.length}). This extension supports up to 50,000 issues. Consider archiving closed issues.`);
+    // Check if we hit the pagination limit
+    const hasMoreIssues = issues.length > maxIssues;
+    if (hasMoreIssues) {
+      // Trim to the actual limit
+      issues.length = maxIssues;
+      this.output.appendLine(`[BeadsAdapter] Loaded ${maxIssues} issues (more available). Increase beadsKanban.maxIssues setting to show more.`);
+      vscode.window.showInformationMessage(
+        `Beads Kanban: Showing ${maxIssues} most recent issues. ${hasMoreIssues ? 'Increase the maxIssues setting to show more.' : ''}`,
+        'Open Settings'
+      ).then(action => {
+        if (action === 'Open Settings') {
+          vscode.commands.executeCommand('workbench.action.openSettings', 'beadsKanban.maxIssues');
+        }
+      });
     }
+
+    const ids = issues.map((i) => i.id);
 
     // 2) Bulk load labels
     const labelsByIssue = new Map<string, string[]>();
@@ -391,7 +438,6 @@ export class BeadsAdapter {
     const childrenMap = new Map<string, DependencyInfo[]>();
     const blockedByMap = new Map<string, DependencyInfo[]>();
     const blocksMap = new Map<string, DependencyInfo[]>();
-    const commentsByIssue = new Map<string, Comment[]>();
 
     if (ids.length > 0) {
       const placeholders = ids.map(() => "?").join(",");
@@ -465,20 +511,9 @@ export class BeadsAdapter {
           blocksMap.set(d.depends_on_id, blocksList);
         }
       }
-      
-      // Fetch comments for these issues
-      const allComments = this.queryAll(`
-        SELECT id, issue_id, author, text, created_at
-        FROM comments
-        WHERE issue_id IN (${placeholders})
-        ORDER BY created_at ASC;
-      `, ids) as Comment[];
 
-      for (const c of allComments) {
-        const list = commentsByIssue.get(c.issue_id) ?? [];
-        list.push(c);
-        commentsByIssue.set(c.issue_id, list);
-      }
+      // Comments are lazy-loaded on demand (see getIssueComments method)
+      // This significantly improves performance when loading large boards
     }
 
     const cards: BoardCard[] = issues.map((r) => ({
@@ -525,7 +560,7 @@ export class BeadsAdapter {
       children: childrenMap.get(r.id),
       blocked_by: blockedByMap.get(r.id),
       blocks: blocksMap.get(r.id),
-      comments: commentsByIssue.get(r.id) ?? []
+      comments: [] // Comments are lazy-loaded on demand
     }));
 
     const columns: BoardColumn[] = [
@@ -542,6 +577,24 @@ export class BeadsAdapter {
     this.cacheTimestamp = Date.now();
     
     return boardData;
+  }
+
+  /**
+   * Get comments for a specific issue (lazy-loaded on demand).
+   * This method is called when the user opens the detail dialog for an issue.
+   */
+  public async getIssueComments(issueId: string): Promise<Comment[]> {
+    if (!this.db) await this.ensureConnected();
+    if (!this.db) throw new Error('Failed to connect to database');
+
+    const comments = this.queryAll(`
+      SELECT id, issue_id, author, text, created_at
+      FROM comments
+      WHERE issue_id = ?
+      ORDER BY created_at ASC;
+    `, [issueId]) as Comment[];
+
+    return comments;
   }
 
   public async createIssue(input: {

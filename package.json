@@ -43,6 +43,13 @@
           "type": "boolean",
           "default": false,
           "description": "If true, use the bd CLI daemon adapter instead of the in-memory SQLite adapter. Requires bd daemon to be running."
+        },
+        "beadsKanban.maxIssues": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 50000,
+          "description": "Maximum number of issues to load into the Kanban board. Lower values improve performance with large repositories."
         }
       }
     }
