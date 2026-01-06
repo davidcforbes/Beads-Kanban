@@ -63,6 +63,10 @@ export class BeadsAdapter {
     }
     this.db = null;
     this.dbPath = null;
+
+    // Clear cache to prevent memory leak
+    this.boardCache = null;
+    this.cacheTimestamp = 0;
   }
 
   public async ensureConnected(): Promise<void> {
@@ -148,6 +152,11 @@ export class BeadsAdapter {
 
     const fullError = `Could not find a valid Beads DB in .beads. Searched: ${candidatePaths.map(x => path.basename(x)).join(', ')}. Details:\n${failureReasons.join('\n')}`;
     this.output.appendLine(`[BeadsAdapter] ERROR: ${fullError}`);
+
+    // Clear cache to prevent returning stale data after connection failure
+    this.boardCache = null;
+    this.cacheTimestamp = 0;
+
     throw new Error(fullError);
   }
 
