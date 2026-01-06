@@ -34,6 +34,7 @@ export class BeadsAdapter {
   private boardCache: any | null = null;
   private cacheTimestamp = 0;
   private lastSaveTime = 0;
+  private lastKnownMtime = 0; // Track file modification time to detect external changes
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -117,6 +118,15 @@ export class BeadsAdapter {
           this.output.appendLine(msg);
           this.db = db;
           this.dbPath = p;
+
+          // Track file modification time to detect external changes
+          try {
+            const stats = fs.statSync(p);
+            this.lastKnownMtime = stats.mtimeMs;
+          } catch (e) {
+            this.output.appendLine(`[BeadsAdapter] Warning: Could not read file stats: ${e}`);
+          }
+
           return;
         }
 
@@ -144,6 +154,85 @@ export class BeadsAdapter {
     return this.dbPath;
   }
 
+  /**
+   * Check if the database file has been modified externally since we last loaded it
+   */
+  private async hasFileChangedExternally(): Promise<boolean> {
+    if (!this.dbPath || this.lastKnownMtime === 0) return false;
+
+    try {
+      const stats = await fsPromises.stat(this.dbPath);
+      const currentMtime = stats.mtimeMs;
+
+      // File has changed if mtime is different from what we know
+      return currentMtime !== this.lastKnownMtime;
+    } catch (error) {
+      this.output.appendLine(`[BeadsAdapter] Error checking file mtime: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Check if we recently saved the file ourselves (within last 2 seconds)
+   * This helps avoid reloading our own writes
+   */
+  public isRecentSelfSave(): boolean {
+    if (this.lastSaveTime === 0) return false;
+    const timeSinceLastSave = Date.now() - this.lastSaveTime;
+    return timeSinceLastSave < 2000; // 2 second window
+  }
+
+  /**
+   * Reload the database from disk, discarding in-memory changes
+   * CAUTION: This loses any unsaved mutations
+   */
+  private async reloadFromDisk(): Promise<void> {
+    if (!this.dbPath) {
+      throw new Error('Cannot reload: No database path set');
+    }
+
+    // Warn if we're about to lose unsaved changes
+    if (this.isDirty) {
+      this.output.appendLine('[BeadsAdapter] WARNING: Reloading from disk will discard unsaved changes!');
+      // Show user warning
+      vscode.window.showWarningMessage(
+        'Beads Kanban: Database was modified externally. Discarding unsaved changes to prevent data loss.',
+        'OK'
+      );
+    }
+
+    try {
+      // Close existing database
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+
+      // Clear dirty flag since we're abandoning changes
+      this.isDirty = false;
+      this.boardCache = null;
+
+      // Initialize SQL.js
+      const SQL = await initSqlJs({
+        locateFile: (file) => path.join(__dirname, file)
+      });
+
+      // Read file from disk
+      const filebuffer = fs.readFileSync(this.dbPath);
+      this.db = new SQL.Database(filebuffer);
+
+      // Update mtime tracking
+      const stats = fs.statSync(this.dbPath);
+      this.lastKnownMtime = stats.mtimeMs;
+
+      this.output.appendLine(`[BeadsAdapter] Reloaded database from disk: ${this.dbPath}`);
+    } catch (error) {
+      const msg = `Failed to reload database: ${error instanceof Error ? error.message : String(error)}`;
+      this.output.appendLine(`[BeadsAdapter] ERROR: ${msg}`);
+      throw new Error(msg);
+    }
+  }
+
   public async getBoard(): Promise<BoardData> {
     // Check cache (valid for 1 second to reduce DB queries during rapid operations)
     const now = Date.now();
@@ -153,6 +242,15 @@ export class BeadsAdapter {
 
     if (!this.db) await this.ensureConnected();
     if (!this.db) throw new Error('Failed to connect to database');
+
+    // Check if database file was modified externally
+    // If it was changed and it's not from our own save, reload from disk
+    const fileChanged = await this.hasFileChangedExternally();
+    if (fileChanged && !this.isRecentSelfSave()) {
+      this.output.appendLine('[BeadsAdapter] External database change detected, reloading from disk');
+      await this.reloadFromDisk();
+    }
+
     const db = this.db;
 
     // 1) Load issues + derived readiness and blockedness via views
@@ -559,6 +657,17 @@ export class BeadsAdapter {
       const tmpPath = this.dbPath + '.tmp';
       fs.writeFileSync(tmpPath, buffer);
       fs.renameSync(tmpPath, this.dbPath);
+
+      // Track save time to avoid reloading our own writes
+      this.lastSaveTime = Date.now();
+
+      // Update mtime tracking
+      try {
+        const stats = fs.statSync(this.dbPath);
+        this.lastKnownMtime = stats.mtimeMs;
+      } catch (e) {
+        this.output.appendLine(`[BeadsAdapter] Warning: Could not update mtime tracking: ${e}`);
+      }
 
       this.output.appendLine('[BeadsAdapter] Database saved successfully');
     } catch (error) {

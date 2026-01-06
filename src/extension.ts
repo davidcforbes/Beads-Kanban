@@ -424,11 +424,10 @@ export function activate(context: vscode.ExtensionContext) {
       let refreshTimeout: NodeJS.Timeout | null = null;
       const refresh = () => {
         // Skip refresh if this change is from our own save operation
-        // TODO: Implement isRecentSelfSave() method if needed
-        // if (adapter.isRecentSelfSave()) {
-        //   return;
-        // }
-        
+        if (adapter.isRecentSelfSave()) {
+          return;
+        }
+
         if (refreshTimeout) {
           clearTimeout(refreshTimeout);
         }
