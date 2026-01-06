@@ -1,9 +1,41 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const execAsync = promisify(exec);
+/**
+ * Execute a command using spawn (more secure than exec)
+ * @param command Command to execute
+ * @param args Command arguments
+ * @param cwd Working directory
+ * @returns Promise resolving to stdout
+ */
+function spawnAsync(command: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, shell: false });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(`Command failed with exit code ${code}: ${stderr || stdout}`));
+      }
+    });
+  });
+}
 
 export interface DaemonStatus {
   running: boolean;
@@ -61,7 +93,7 @@ export class DaemonManager {
    */
   async getStatus(): Promise<DaemonStatus> {
     try {
-      const { stdout } = await execAsync('bd info --json', { cwd: this.workspaceRoot });
+      const { stdout } = await spawnAsync('bd', ['info', '--json'], this.workspaceRoot);
       if (!stdout.trim()) {
         return { running: false, healthy: false };
       }
@@ -90,7 +122,7 @@ export class DaemonManager {
    */
   async listAllDaemons(): Promise<DaemonInfo[]> {
     try {
-      const { stdout } = await execAsync('bd daemons list --json', { cwd: this.workspaceRoot });
+      const { stdout } = await spawnAsync('bd', ['daemons', 'list', '--json'], this.workspaceRoot);
 
       if (!stdout.trim()) {
         return [];
@@ -117,7 +149,7 @@ export class DaemonManager {
    */
   async checkHealth(): Promise<{ healthy: boolean; issues: string[] }> {
     try {
-      const { stdout } = await execAsync('bd daemons health --json', { cwd: this.workspaceRoot });
+      const { stdout } = await spawnAsync('bd', ['daemons', 'health', '--json'], this.workspaceRoot);
 
       if (!stdout.trim()) {
         return { healthy: true, issues: [] };
@@ -152,14 +184,14 @@ export class DaemonManager {
    * Restart the daemon for this workspace
    */
   async restart(): Promise<void> {
-    await execAsync('bd daemons restart .', { cwd: this.workspaceRoot });
+    await spawnAsync('bd', ['daemons', 'restart', '.'], this.workspaceRoot);
   }
 
   /**
    * Stop the daemon for this workspace
    */
   async stop(): Promise<void> {
-    await execAsync('bd daemons stop .', { cwd: this.workspaceRoot });
+    await spawnAsync('bd', ['daemons', 'stop', '.'], this.workspaceRoot);
   }
 
   /**
@@ -167,9 +199,9 @@ export class DaemonManager {
    */
   async getLogs(lines: number = 50): Promise<string> {
     try {
-      // Validate lines parameter to prevent command injection
+      // Validate lines parameter
       const safeLines = Math.max(1, Math.min(1000, Math.floor(lines)));
-      const { stdout } = await execAsync(`bd daemons logs . -n ${safeLines}`, { cwd: this.workspaceRoot });
+      const { stdout } = await spawnAsync('bd', ['daemons', 'logs', '.', '-n', String(safeLines)], this.workspaceRoot);
       return stdout;
     } catch (error) {
       return error instanceof Error ? error.message : 'Failed to get logs';
