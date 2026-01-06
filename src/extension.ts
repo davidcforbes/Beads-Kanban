@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { BeadsAdapter } from "./beadsAdapter";
+import { DaemonManager } from "./daemonManager";
 import { getWebviewHtml } from "./webview";
 import {
   BoardData,
@@ -62,6 +63,126 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(output);
   context.subscriptions.push({ dispose: () => adapter.dispose() });
+
+  // Daemon management setup
+  const ws = vscode.workspace.workspaceFolders?.[0];
+  if (ws) {
+    const daemonManager = new DaemonManager(ws.uri.fsPath);
+
+    // Create status bar item
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBarItem.text = "$(sync~spin) Beads Daemon";
+    statusBarItem.tooltip = "Checking daemon status...";
+    statusBarItem.command = "beadsKanban.showDaemonActions";
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
+
+    // Update daemon status in status bar
+    const updateDaemonStatus = async () => {
+      try {
+        const status = await daemonManager.getStatus();
+        if (status.running && status.healthy) {
+          statusBarItem.text = "$(check) Beads Daemon";
+          statusBarItem.tooltip = `Daemon running${status.pid ? ` (PID ${status.pid})` : ''}`;
+          statusBarItem.backgroundColor = undefined;
+        } else if (status.running && !status.healthy) {
+          statusBarItem.text = "$(warning) Beads Daemon";
+          statusBarItem.tooltip = "Daemon unhealthy";
+          statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        } else {
+          statusBarItem.text = "$(circle-slash) Beads Daemon";
+          statusBarItem.tooltip = "Daemon not running";
+          statusBarItem.backgroundColor = undefined;
+        }
+      } catch (e) {
+        statusBarItem.text = "$(error) Beads Daemon";
+        statusBarItem.tooltip = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
+        statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+      }
+    };
+
+    // Initial status check
+    updateDaemonStatus();
+
+    // Poll status every 10 seconds
+    const pollInterval = setInterval(updateDaemonStatus, 10000);
+    context.subscriptions.push({ dispose: () => clearInterval(pollInterval) });
+
+    // Register daemon actions command
+    context.subscriptions.push(
+      vscode.commands.registerCommand("beadsKanban.showDaemonActions", async () => {
+        const actions = [
+          { label: "$(info) Show Status", action: "status" },
+          { label: "$(list-tree) List All Daemons", action: "list" },
+          { label: "$(pulse) Check Health", action: "health" },
+          { label: "$(debug-restart) Restart Daemon", action: "restart" },
+          { label: "$(debug-stop) Stop Daemon", action: "stop" },
+          { label: "$(output) View Logs", action: "logs" }
+        ];
+
+        const selected = await vscode.window.showQuickPick(actions, {
+          placeHolder: "Select daemon action"
+        });
+
+        if (!selected) return;
+
+        try {
+          switch (selected.action) {
+            case "status": {
+              const status = await daemonManager.getStatus();
+              const msg = status.running
+                ? `Daemon is running${status.pid ? ` (PID ${status.pid})` : ''}`
+                : `Daemon is not running${status.error ? `: ${status.error}` : ''}`;
+              vscode.window.showInformationMessage(msg);
+              break;
+            }
+            case "list": {
+              const daemons = await daemonManager.listAllDaemons();
+              if (daemons.length === 0) {
+                vscode.window.showInformationMessage("No daemons running");
+              } else {
+                const list = daemons.map(d => `${d.workspace} (PID ${d.pid}, v${d.version})`).join("\n");
+                vscode.window.showInformationMessage(`Running daemons:\n${list}`);
+              }
+              break;
+            }
+            case "health": {
+              const health = await daemonManager.checkHealth();
+              if (health.healthy) {
+                vscode.window.showInformationMessage("Daemon is healthy");
+              } else {
+                vscode.window.showWarningMessage(`Daemon issues:\n${health.issues.join("\n")}`);
+              }
+              break;
+            }
+            case "restart": {
+              await daemonManager.restart();
+              vscode.window.showInformationMessage("Daemon restarted");
+              updateDaemonStatus();
+              break;
+            }
+            case "stop": {
+              await daemonManager.stop();
+              vscode.window.showInformationMessage("Daemon stopped");
+              updateDaemonStatus();
+              break;
+            }
+            case "logs": {
+              const logs = await daemonManager.getLogs(50);
+              const doc = await vscode.workspace.openTextDocument({
+                content: logs,
+                language: "log"
+              });
+              await vscode.window.showTextDocument(doc);
+              break;
+            }
+          }
+        } catch (e) {
+          vscode.window.showErrorMessage(`Daemon action failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        }
+      })
+    );
+  }
 
   const openCmd = vscode.commands.registerCommand("beadsKanban.openBoard", async () => {
     const panel = vscode.window.createWebviewPanel(

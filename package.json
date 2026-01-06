@@ -25,6 +25,10 @@
       {
         "command": "beadsKanban.openBoard",
         "title": "Beads: Open Kanban Board"
+      },
+      {
+        "command": "beadsKanban.showDaemonActions",
+        "title": "Beads: Manage Daemon"
       }
     ],
     "configuration": {
