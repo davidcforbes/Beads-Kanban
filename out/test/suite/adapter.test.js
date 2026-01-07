@@ -57,7 +57,8 @@ suite('BeadsAdapter CRUD Tests', () => {
                 issue_type: 'task'
             });
             assert.ok(result.id, 'Should return an issue ID');
-            assert.match(result.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'ID should be a valid UUID');
+            assert.strictEqual(typeof result.id, 'string');
+            assert.ok(result.id.length > 0, 'ID should be non-empty');
         }
         catch (err) {
             if (err instanceof Error && err.message.includes('No .beads directory')) {

@@ -80,7 +80,7 @@ suite('Message Validation Tests', () => {
     });
     test('IssueUpdateSchema: Valid update passes', () => {
         const validUpdate = {
-            id: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             updates: {
                 title: 'Updated Title',
                 priority: 1
@@ -89,9 +89,9 @@ suite('Message Validation Tests', () => {
         const result = types_1.IssueUpdateSchema.safeParse(validUpdate);
         assert.ok(result.success, 'Valid update should pass validation');
     });
-    test('IssueUpdateSchema: Rejects invalid UUID', () => {
+    test('IssueUpdateSchema: Rejects empty id', () => {
         const invalidUpdate = {
-            id: 'not-a-uuid',
+            id: '',
             updates: { title: 'Test' }
         };
         const result = types_1.IssueUpdateSchema.safeParse(invalidUpdate);
@@ -99,7 +99,7 @@ suite('Message Validation Tests', () => {
     });
     test('IssueUpdateSchema: Rejects description over 10000 chars', () => {
         const invalidUpdate = {
-            id: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             updates: {
                 description: 'A'.repeat(10001)
             }
@@ -109,7 +109,7 @@ suite('Message Validation Tests', () => {
     });
     test('CommentAddSchema: Valid comment passes', () => {
         const validComment = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             text: 'This is a comment',
             author: 'User'
         };
@@ -118,7 +118,7 @@ suite('Message Validation Tests', () => {
     });
     test('CommentAddSchema: Rejects empty text', () => {
         const invalidComment = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             text: '',
             author: 'User'
         };
@@ -127,7 +127,7 @@ suite('Message Validation Tests', () => {
     });
     test('LabelSchema: Valid label passes', () => {
         const validLabel = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             label: 'bug'
         };
         const result = types_1.LabelSchema.safeParse(validLabel);
@@ -135,7 +135,7 @@ suite('Message Validation Tests', () => {
     });
     test('LabelSchema: Rejects label over 100 chars', () => {
         const invalidLabel = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
+            id: 'agent.native.activity.layer.beads-1',
             label: 'A'.repeat(101)
         };
         const result = types_1.LabelSchema.safeParse(invalidLabel);
@@ -143,8 +143,8 @@ suite('Message Validation Tests', () => {
     });
     test('DependencySchema: Valid dependency passes', () => {
         const validDep = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
-            dependsOnId: '550e8400-e29b-41d4-a716-446655440001',
+            id: 'agent.native.activity.layer.beads-1',
+            otherId: 'agent.native.activity.layer.beads-2',
             type: 'blocks'
         };
         const result = types_1.DependencySchema.safeParse(validDep);
@@ -152,8 +152,8 @@ suite('Message Validation Tests', () => {
     });
     test('DependencySchema: Rejects invalid type', () => {
         const invalidDep = {
-            issueId: '550e8400-e29b-41d4-a716-446655440000',
-            dependsOnId: '550e8400-e29b-41d4-a716-446655440001',
+            id: 'agent.native.activity.layer.beads-1',
+            otherId: 'agent.native.activity.layer.beads-2',
             type: 'invalid-type'
         };
         const result = types_1.DependencySchema.safeParse(invalidDep);
