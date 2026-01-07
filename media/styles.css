@@ -550,6 +550,10 @@ main {
     animation: spin 1s linear infinite;
 }
 
+.loading-overlay.hidden {
+    display: none;
+}
+
 @keyframes spin {
     to {
         transform: rotate(360deg);

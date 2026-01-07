@@ -50,6 +50,11 @@
           "minimum": 100,
           "maximum": 50000,
           "description": "Maximum number of issues to load into the Kanban board. Lower values improve performance with large repositories."
+        },
+        "beadsKanban.issuePrefix": {
+          "type": "string",
+          "default": "",
+          "description": "Issue ID prefix (e.g., 'my-project'). Leave empty to auto-detect from database. Use 'bd rename-prefix <new-prefix>' CLI command to change existing issue prefixes."
         }
       }
     }

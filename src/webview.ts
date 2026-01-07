@@ -19,7 +19,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
         content="default-src 'none';
                  img-src ${webview.cspSource};
                  style-src ${webview.cspSource};
+                 style-src-attr 'unsafe-inline';
                  script-src 'nonce-${nonce}';
+                 connect-src ${webview.cspSource};
                  base-uri 'none';
                  frame-ancestors 'none';
                  form-action 'none';">
@@ -78,7 +80,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
   <div id="toast" class="toast hidden"></div>
 
-  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+  <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-spinner"></div>
   </div>
 

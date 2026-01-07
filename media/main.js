@@ -33,16 +33,21 @@ function showLoading() {
     activeRequests++;
     const loader = document.getElementById('loadingOverlay');
     if (loader) {
-        loader.style.display = 'flex';
+        loader.classList.remove('hidden');
     }
 }
 
 function hideLoading() {
     activeRequests = Math.max(0, activeRequests - 1);
+    console.log('[Webview] hideLoading() called, activeRequests:', activeRequests);
     if (activeRequests === 0) {
         const loader = document.getElementById('loadingOverlay');
+        console.log('[Webview] hideLoading() - hiding loader, element:', loader);
         if (loader) {
-            loader.style.display = 'none';
+            loader.classList.add('hidden');
+            console.log('[Webview] hideLoading() - loader.classList:', loader.classList.toString());
+        } else {
+            console.error('[Webview] hideLoading() - loadingOverlay element not found!');
         }
     }
 }
@@ -125,7 +130,9 @@ function postAsync(type, payload) {
 }
 
 function post(type, payload) {
-    vscode.postMessage({ type, requestId: requestId(), payload });
+    const reqId = requestId();
+    console.log('[Webview] Posting message:', type, 'requestId:', reqId, 'payload:', payload);
+    vscode.postMessage({ type, requestId: reqId, payload });
 }
 
 function toLocalDateTimeInput(value) {
@@ -202,14 +209,19 @@ function columnForCard(card) {
 }
 
 function render() {
-    if (!boardData) return;
+    console.log('[Webview] render() called, boardData:', boardData);
+    if (!boardData) {
+        console.log('[Webview] render() aborted - no boardData');
+        return;
+    }
     if (!boardData.columns || !boardData.cards) {
-        console.error('Invalid boardData: missing columns or cards');
+        console.error('[Webview] Invalid boardData: missing columns or cards');
         return;
     }
 
     const columns = boardData.columns;
     const cards = boardData.cards;
+    console.log('[Webview] render() - columns:', columns.length, 'cards:', cards.length);
 
     // Filtering
     const pVal = filterPriority.value;
@@ -230,6 +242,8 @@ function render() {
         (byCol[col] ?? (byCol[col] = [])).push(card);
     }
 
+    console.log('[Webview] render() - filtered cards:', Object.values(byCol).flat().length);
+    console.log('[Webview] render() - clearing board and rebuilding DOM');
     boardEl.innerHTML = "";
     for (const col of columns) {
         const colWrap = document.createElement("section");
@@ -410,6 +424,7 @@ function render() {
         colWrap.appendChild(dropZone);
         boardEl.appendChild(colWrap);
     }
+    console.log('[Webview] render() completed successfully - DOM rebuilt with', columns.length, 'columns');
 }
 
 function escapeHtml(s) {
@@ -456,8 +471,14 @@ filterType.addEventListener("change", render);
 filterSearch.addEventListener("input", render);
 
 window.addEventListener("message", (event) => {
+    console.log('[Webview] Received message event:', event);
+    console.log('[Webview] Message data:', event.data);
     const msg = event.data;
-    if (!msg || !msg.type) return;
+    if (!msg || !msg.type) {
+        console.log('[Webview] Invalid message structure - missing type');
+        return;
+    }
+    console.log('[Webview] Message type:', msg.type, 'requestId:', msg.requestId);
 
     // Handle cleanup message from extension (for proper disposal)
     if (msg.type === "webview.cleanup") {
@@ -466,8 +487,14 @@ window.addEventListener("message", (event) => {
     }
 
     if (msg.type === "board.data") {
+        console.log('[Webview] Processing board.data message');
+        console.log('[Webview] Payload:', msg.payload);
+        console.log('[Webview] Cards count:', msg.payload?.cards?.length);
         boardData = msg.payload;
+        console.log('[Webview] boardData assigned, calling render()');
         render();
+        console.log('[Webview] render() completed, calling hideLoading()');
+        hideLoading();
         
         // Resolve any pending request waiting for board data
         if (msg.requestId && pendingRequests.has(msg.requestId)) {
@@ -646,7 +673,7 @@ function openDetail(card) {
                          </div>
                     </div>
                     <div>
-                         <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Structure</label>` : ''}
+                         <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Structure</label>
                          
                          <!-- Parent -->
                          <div style="margin-bottom: 8px;">
@@ -741,7 +768,7 @@ function openDetail(card) {
 
 ${!isCreateMode ? `
             <div style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
-                <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Comments</label>` : ''}
+                <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Comments</label>
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-height: 200px; overflow-y: auto;">
                     ${card.comments && card.comments.length > 0 ? card.comments.map(c => `
                         <div class="comment" style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--border);">
@@ -1042,4 +1069,5 @@ ${card.design || 'None'}
     detDialog.showModal();
 }
 
+console.log('[Webview] Sending initial board.load request');
 post("board.load");

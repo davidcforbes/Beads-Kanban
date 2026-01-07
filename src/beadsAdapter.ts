@@ -158,6 +158,44 @@ export class BeadsAdapter {
   }
 
   /**
+   * Get the issue prefix from config table or VS Code settings
+   */
+  private async getIssuePrefix(): Promise<string> {
+    // First check VS Code setting
+    const configPrefix = vscode.workspace.getConfiguration().get<string>("beadsKanban.issuePrefix", "").trim();
+    if (configPrefix) {
+      return configPrefix;
+    }
+
+    // Fall back to database config
+    if (!this.db) await this.ensureConnected();
+    if (!this.db) throw new Error('Failed to connect to database');
+
+    const res = this.db.exec("SELECT value FROM config WHERE key = 'issue_prefix' LIMIT 1;");
+    if (res.length > 0 && res[0].values.length > 0) {
+      return String(res[0].values[0][0]);
+    }
+
+    // Default fallback
+    return "beads";
+  }
+
+  /**
+   * Generate a short hash suffix (3 characters, base36) for issue IDs
+   * Uses a hash of title + timestamp to ensure uniqueness
+   */
+  private generateShortHash(title: string): string {
+    const input = `${title}-${Date.now()}-${Math.random()}`;
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = ((hash << 5) - hash) + input.charCodeAt(i);
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Convert to base36 and take first 3 characters
+    return Math.abs(hash).toString(36).substring(0, 3);
+  }
+
+  /**
    * Reload the database from disk to pick up external changes.
    * Closes the current connection and re-reads the file.
    */
@@ -616,9 +654,14 @@ export class BeadsAdapter {
     if (!this.db) throw new Error('Failed to connect to database');
     const db = this.db;
 
-    const id = uuidv4();
+    // Validate title
     const title = (input.title ?? "").trim();
     if (!title) throw new Error("Title is required.");
+
+    // Generate beads-style ID: {prefix}-{3-char-hash}
+    const prefix = await this.getIssuePrefix();
+    const suffix = this.generateShortHash(title);
+    const id = `${prefix}-${suffix}`;
 
     const description = input.description ?? "";
     const status: IssueStatus = input.status ?? "open";
@@ -775,13 +818,61 @@ export class BeadsAdapter {
       const data = this.db.export();
       const buffer = Buffer.from(data);
 
+      // Track save time BEFORE rename to prevent race condition with file watcher
+      this.lastSaveTime = Date.now();
+
       // Atomic write: write to temp file then rename
       const tmpPath = this.dbPath + '.tmp';
       fs.writeFileSync(tmpPath, buffer);
-      fs.renameSync(tmpPath, this.dbPath);
-
-      // Track save time to avoid reloading our own writes
-      this.lastSaveTime = Date.now();
+      
+      // Retry rename operation with exponential backoff (handles Windows file locks)
+      const maxRetries = 5;
+      let lastError: Error | null = null;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          fs.renameSync(tmpPath, this.dbPath);
+          lastError = null;
+          break; // Success!
+        } catch (error) {
+          lastError = error as Error;
+          
+          // Only retry on EPERM/EBUSY errors (file locked)
+          if (error instanceof Error && 
+              (error.message.includes('EPERM') || error.message.includes('EBUSY'))) {
+            
+            if (attempt < maxRetries - 1) {
+              // Exponential backoff: 10ms, 20ms, 40ms, 80ms
+              const delayMs = 10 * Math.pow(2, attempt);
+              this.output.appendLine(`[BeadsAdapter] Rename failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delayMs}ms: ${error.message}`);
+              
+              // Synchronous sleep for simplicity
+              const start = Date.now();
+              while (Date.now() - start < delayMs) {
+                // Busy wait (not ideal but simple for short delays)
+              }
+            } else {
+              this.output.appendLine(`[BeadsAdapter] Rename failed after ${maxRetries} attempts: ${error.message}`);
+            }
+          } else {
+            // Non-lock error, don't retry
+            throw error;
+          }
+        }
+      }
+      
+      // If we exhausted retries, throw the last error
+      if (lastError) {
+        // Clean up temp file
+        try {
+          if (fs.existsSync(tmpPath)) {
+            fs.unlinkSync(tmpPath);
+          }
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        throw lastError;
+      }
       
       // Update mtime tracking
       try {

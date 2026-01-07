@@ -269,6 +269,9 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   const openCmd = vscode.commands.registerCommand("beadsKanban.openBoard", async () => {
+    try {
+      output.appendLine('[Extension] === Opening Beads Kanban Board ===');
+      output.appendLine('[Extension] Creating webview panel...');
     const panel = vscode.window.createWebviewPanel(
       "beadsKanban.board",
       "Beads Kanban",
@@ -278,6 +281,7 @@ export function activate(context: vscode.ExtensionContext) {
         retainContextWhenHidden: true
       }
     );
+    output.appendLine('[Extension] Webview panel created');
 
     // Track panel lifecycle for daemon polling optimization
     activePanelCount++;
@@ -285,22 +289,46 @@ export function activate(context: vscode.ExtensionContext) {
       startDaemonPolling(); // Start polling when first panel opens
     }
 
-    panel.webview.html = getWebviewHtml(panel.webview, context.extensionUri);
-
     const readOnly = vscode.workspace.getConfiguration().get<boolean>("beadsKanban.readOnly", false);
 
-    const post = (msg: ExtMsg) => panel.webview.postMessage(msg);
+    // Track disposal state
+    let isDisposed = false;
 
-    const sendBoard = async (requestId: string) => {
+    const post = (msg: ExtMsg) => {
+      if (isDisposed) {
+        output.appendLine(`[Extension] Attempted to post to disposed webview: ${msg.type}`);
+        return;
+      }
       try {
-        const data = await adapter.getBoard();
-        post({ type: "board.data", requestId, payload: data });
+        panel.webview.postMessage(msg);
       } catch (e) {
-        post({ type: "mutation.error", requestId, error: sanitizeError(e) });
+        output.appendLine(`[Extension] Error posting message: ${sanitizeError(e)}`);
+        isDisposed = true; // Mark as disposed if posting fails
       }
     };
 
+    const sendBoard = async (requestId: string) => {
+      if (isDisposed) {
+        output.appendLine(`[Extension] Skipping sendBoard - webview is disposed`);
+        return;
+      }
+      output.appendLine(`[Extension] sendBoard called with requestId: ${requestId}`);
+      try {
+        const data = await adapter.getBoard();
+        output.appendLine(`[Extension] Got board data: ${data.cards.length} cards`);
+        post({ type: "board.data", requestId, payload: data });
+        output.appendLine(`[Extension] Posted board.data message`);
+      } catch (e) {
+        output.appendLine(`[Extension] Error in sendBoard: ${sanitizeError(e)}`);
+        if (!isDisposed) {
+          post({ type: "mutation.error", requestId, error: sanitizeError(e) });
+        }
+      }
+    };
+
+    // Set up message handler BEFORE setting HTML to avoid race condition
     panel.webview.onDidReceiveMessage(async (msg: WebMsg) => {
+      output.appendLine(`[Extension] Received message: ${msg?.type} (requestId: ${msg?.requestId})`);
       if (!msg?.type || !msg.requestId) return;
 
       if (msg.type === "board.load" || msg.type === "board.refresh") {
@@ -467,6 +495,17 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // Set HTML after message handler is ready to avoid race condition
+    output.appendLine('[Extension] Setting webview HTML');
+    try {
+      panel.webview.html = getWebviewHtml(panel.webview, context.extensionUri);
+      output.appendLine('[Extension] Webview HTML set successfully');
+    } catch (e) {
+      output.appendLine(`[Extension] Error setting webview HTML: ${sanitizeError(e)}`);
+      isDisposed = true;
+      return;
+    }
+
     // Auto refresh when DB files change
     const ws = vscode.workspace.workspaceFolders?.[0];
     if (ws) {
@@ -503,8 +542,15 @@ export function activate(context: vscode.ExtensionContext) {
       watcher.onDidCreate(refresh);
       watcher.onDidDelete(refresh);
       panel.onDidDispose(() => {
-        // Send cleanup message to webview before disposal
-        panel.webview.postMessage({ type: 'webview.cleanup' });
+        output.appendLine('[Extension] Panel disposed');
+        isDisposed = true;
+        
+        // Try to send cleanup message to webview before disposal
+        try {
+          panel.webview.postMessage({ type: 'webview.cleanup' });
+        } catch (e) {
+          // Webview already disposed, ignore
+        }
         
         if (refreshTimeout) {
           clearTimeout(refreshTimeout);
@@ -519,8 +565,20 @@ export function activate(context: vscode.ExtensionContext) {
       });
     }
 
-    // initial load
-    sendBoard(`init-${Date.now()}`);
+    // initial load - give webview time to initialize
+    output.appendLine('[Extension] Triggering initial board load');
+    setTimeout(() => {
+      if (!isDisposed) {
+        output.appendLine('[Extension] Sending initial board data');
+        sendBoard(`init-${Date.now()}`);
+      } else {
+        output.appendLine('[Extension] Panel disposed before initial load');
+      }
+    }, 500);
+    } catch (error) {
+      output.appendLine(`[Extension] Error in openBoard command: ${sanitizeError(error)}`);
+      vscode.window.showErrorMessage(`Failed to open Beads Kanban: ${sanitizeError(error)}`);
+    }
   });
 
   context.subscriptions.push(openCmd);
