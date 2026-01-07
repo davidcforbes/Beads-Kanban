@@ -407,7 +407,8 @@ export class DaemonBeadsAdapter {
     const args = ['create', '--title', title];
 
     if (input.description) args.push('--description', input.description);
-    if (input.status) args.push('--status', input.status);
+    // NOTE: bd create doesn't support --status, issues are always created as "open"
+    // If a different status is needed, it must be updated after creation
     if (input.priority !== undefined) args.push('--priority', String(input.priority));
     if (input.issue_type) args.push('--type', input.issue_type);
     if (input.assignee) args.push('--assignee', input.assignee);
@@ -430,13 +431,21 @@ export class DaemonBeadsAdapter {
       this.trackMutation();
 
       // bd create returns the created issue with id
+      let issueId: string;
       if (result && result.id) {
-        return { id: result.id };
+        issueId = result.id;
       } else if (result && Array.isArray(result) && result[0]?.id) {
-        return { id: result[0].id };
+        issueId = result[0].id;
       } else {
         throw new Error('bd create did not return issue id');
       }
+
+      // If a non-default status was requested, update it after creation
+      if (input.status && input.status !== 'open') {
+        await this.setIssueStatus(issueId, input.status);
+      }
+
+      return { id: issueId };
     } catch (error) {
       const msg = `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`;
       this.output.appendLine(`[DaemonBeadsAdapter] ERROR: ${msg}`);
