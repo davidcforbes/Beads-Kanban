@@ -659,7 +659,7 @@ function openDetail(card) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                          <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Tags</label>
-                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 0;">
+                         <div class="labels-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 0;">
                             ${(card.labels || []).map(l => `
                                 <span class="badge" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px;">
                                     #${escapeHtml(l)}
@@ -871,7 +871,40 @@ const btnPostComment = form.querySelector("#btnPostComment");
     };
     }
 
-// Label Events - supports comma-separated multiple labels
+// Helper function to refresh labels display in the dialog
+    function refreshLabelsDisplay() {
+        const labelsContainer = form.querySelector(".labels-container");
+        if (!labelsContainer) return;
+        
+        labelsContainer.innerHTML = (card.labels || []).map(l => `
+            <span class="badge" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px;">
+                #${escapeHtml(l)}
+                <span class="remove-label" data-label="${escapeHtml(l)}" style="cursor: pointer; opacity: 0.7;">&times;</span>
+            </span>
+        `).join('');
+        
+        // Re-attach remove handlers
+        labelsContainer.querySelectorAll(".remove-label").forEach(btn => {
+            btn.onclick = async (e) => {
+                const label = e.target.dataset.label;
+                try {
+                    await postAsync("issue.removeLabel", { id: card.id, label });
+                    // Update card.labels array
+                    card.labels = (card.labels || []).filter(l => l !== label);
+                    // Refresh the display
+                    refreshLabelsDisplay();
+                    toast("Label removed");
+                    // Refresh board in background
+                    postAsync("board.refresh", {});
+                } catch (err) {
+                    console.error("Remove label failed:", err);
+                    toast(`Failed to remove label: ${err.message}`);
+                }
+            };
+        });
+    }
+
+    // Label Events - supports comma-separated multiple labels
     const btnAddLabel = form.querySelector("#btnAddLabel");
     if (btnAddLabel) {
         btnAddLabel.onclick = async (e) => {
@@ -896,6 +929,11 @@ const btnPostComment = form.querySelector("#btnPostComment");
         for (const label of labels) {
             try {
                 await postAsync("issue.addLabel", { id: card.id, label });
+                // Update card.labels array
+                if (!card.labels) card.labels = [];
+                if (!card.labels.includes(label)) {
+                    card.labels.push(label);
+                }
                 successCount++;
             } catch (err) {
                 console.error(`Add label '${label}' failed:`, err);
@@ -907,6 +945,8 @@ const btnPostComment = form.querySelector("#btnPostComment");
         if (successCount > 0) {
             toast(`Added ${successCount} label${successCount > 1 ? 's' : ''}`);
             input.value = ''; // Clear input on success
+            // Refresh the labels display in dialog
+            refreshLabelsDisplay();
             // Trigger board refresh to show new labels
             postAsync("board.refresh", {});
         }
@@ -919,20 +959,8 @@ const btnPostComment = form.querySelector("#btnPostComment");
     };
     }
 
-    form.querySelectorAll(".remove-label").forEach(btn => {
-        btn.onclick = async (e) => {
-            const label = e.target.dataset.label;
-            try {
-                await postAsync("issue.removeLabel", { id: card.id, label });
-                toast("Label removed");
-                // Keep dialog open and refresh to show updated labels
-                postAsync("board.refresh", {});
-            } catch (err) {
-                console.error("Remove label failed:", err);
-                toast(`Failed to remove label: ${err.message}`);
-            }
-        };
-    });
+    // Initialize remove handlers for existing labels
+    refreshLabelsDisplay();
 
     // Dependency Events
     const btnSetParent = form.querySelector("#btnSetParent");
