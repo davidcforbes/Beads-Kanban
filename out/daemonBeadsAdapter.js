@@ -529,7 +529,8 @@ class DaemonBeadsAdapter {
      */
     async addComment(issueId, text, author) {
         try {
-            await this.execBd(['comments', 'add', issueId, '--text', text, '--author', author]);
+            // bd comments add expects text as positional argument, not --text flag
+            await this.execBd(['comments', 'add', issueId, text, '--author', author]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }

@@ -578,7 +578,7 @@ function openDetail(card) {
     
     form.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
-            <h3 style="margin: 0 0 12px 0;">${isCreateMode ? 'Create New Issue' : 'Edit Issue'}</h3>
+            <h3 style="margin: 0 0 12px 0;">${isCreateMode ? 'Create New Issue' : `Edit Issue <span style="color: var(--muted); font-weight: normal; font-size: 14px;">${escapeHtml(card.id)}</span>`}</h3>
             <div style="display: flex; gap: 8px; align-items: center;">
                  <div style="flex: 1;">
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Title</label>
