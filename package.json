@@ -68,7 +68,12 @@
     "test": "vscode-test",
     "test:watch": "vscode-test --watch",
     "test:coverage": "c8 npm run test",
-    "test:bd-cli": "node scripts/test-bd-cli.js"
+    "test:bd-cli": "node scripts/test-bd-cli.js",
+    "test:adapter": "node scripts/test-adapter-integration.js",
+    "test:validation": "node scripts/test-message-validation.js",
+    "test:field-mapping": "node scripts/test-field-mapping.js",
+    "test:round-trip": "node scripts/test-round-trip.js",
+    "test:all": "node scripts/test-all.js"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
