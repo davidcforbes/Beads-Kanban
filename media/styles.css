@@ -266,6 +266,11 @@ body {
     color: var(--vscode-editor-foreground);
 }
 
+/* Smaller font for datetime pickers */
+.dialogForm input[type="datetime-local"] {
+    font-size: 13px;
+}
+
 /* Narrow input for estimate minutes */
 .input-estimate {
     max-width: 100px;

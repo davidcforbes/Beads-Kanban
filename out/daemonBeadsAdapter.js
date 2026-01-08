@@ -320,9 +320,11 @@ class DaemonBeadsAdapter {
      * Get board data from bd daemon
      */
     async getBoard() {
-        // 1-second cache to reduce CLI overhead
+        // Configurable cache TTL to reduce CLI overhead (default: 5 seconds)
+        const cacheTTL = vscode.workspace.getConfiguration('beadsKanban').get('daemonCacheTTL', 5000);
         const now = Date.now();
-        if (this.boardCache && (now - this.cacheTimestamp) < 1000) {
+        if (this.boardCache && (now - this.cacheTimestamp) < cacheTTL) {
+            this.output.appendLine(`[DaemonBeadsAdapter] Returning cached board data (age: ${now - this.cacheTimestamp}ms)`);
             return this.boardCache;
         }
         // Read pagination limit from configuration
@@ -600,6 +602,156 @@ class DaemonBeadsAdapter {
         }
     }
     /**
+     * Get paginated table data with server-side filtering and sorting.
+     * For daemon adapter, we fetch and filter in memory but on the server side.
+     *
+     * @param filters Object containing filter criteria
+     * @param sorting Array of { id: string, dir: 'asc'|'desc' } for sorting
+     * @param offset Starting row index (0-based)
+     * @param limit Number of rows to return
+     * @returns Object containing filtered/sorted cards and total count
+     */
+    async getTableData(filters, sorting, offset, limit) {
+        await this.ensureConnected();
+        this.output.appendLine(`[DaemonBeadsAdapter] getTableData: offset=${offset}, limit=${limit}, filters=${JSON.stringify(filters)}, sorting=${JSON.stringify(sorting)}`);
+        // Get all issues from board (uses cache if available)
+        const board = await this.getBoard();
+        let allCards = board.cards;
+        this.output.appendLine(`[DaemonBeadsAdapter] Fetched ${allCards.length} total cards from board`);
+        // Apply filters
+        if (filters.search || filters.priority || filters.type || filters.status || filters.assignee || filters.labels) {
+            allCards = allCards.filter(card => {
+                // Search filter
+                if (filters.search) {
+                    const searchLower = filters.search.toLowerCase();
+                    const matchesSearch = card.title.toLowerCase().includes(searchLower) ||
+                        card.id.toLowerCase().includes(searchLower) ||
+                        (card.description && card.description.toLowerCase().includes(searchLower));
+                    if (!matchesSearch)
+                        return false;
+                }
+                // Priority filter
+                if (filters.priority && String(card.priority) !== filters.priority) {
+                    return false;
+                }
+                // Type filter
+                if (filters.type && card.issue_type !== filters.type) {
+                    return false;
+                }
+                // Status filter
+                if (filters.status) {
+                    if (filters.status === 'not_closed') {
+                        if (card.status === 'closed')
+                            return false;
+                    }
+                    else if (filters.status === 'active') {
+                        if (card.status !== 'in_progress' && card.status !== 'open')
+                            return false;
+                    }
+                    else if (filters.status === 'blocked') {
+                        if (card.status !== 'blocked')
+                            return false;
+                    }
+                    else if (filters.status !== 'all') {
+                        if (card.status !== filters.status)
+                            return false;
+                    }
+                }
+                // Assignee filter
+                if (filters.assignee) {
+                    if (filters.assignee === 'unassigned') {
+                        if (card.assignee)
+                            return false;
+                    }
+                    else {
+                        if (card.assignee !== filters.assignee)
+                            return false;
+                    }
+                }
+                // Labels filter (must have ALL specified labels)
+                if (filters.labels && filters.labels.length > 0) {
+                    if (!card.labels || card.labels.length === 0)
+                        return false;
+                    const hasAllLabels = filters.labels.every(label => card.labels.includes(label));
+                    if (!hasAllLabels)
+                        return false;
+                }
+                return true;
+            });
+            this.output.appendLine(`[DaemonBeadsAdapter] After filtering: ${allCards.length} cards`);
+        }
+        // Apply sorting
+        if (sorting && sorting.length > 0) {
+            allCards.sort((a, b) => {
+                for (const sortSpec of sorting) {
+                    let cmp = 0;
+                    switch (sortSpec.id) {
+                        case 'id':
+                            cmp = a.id.localeCompare(b.id);
+                            break;
+                        case 'title':
+                            cmp = a.title.localeCompare(b.title);
+                            break;
+                        case 'status':
+                            cmp = a.status.localeCompare(b.status);
+                            break;
+                        case 'priority':
+                            cmp = a.priority - b.priority;
+                            break;
+                        case 'type':
+                            cmp = a.issue_type.localeCompare(b.issue_type);
+                            break;
+                        case 'assignee':
+                            const aAssignee = a.assignee || '';
+                            const bAssignee = b.assignee || '';
+                            cmp = aAssignee.localeCompare(bAssignee);
+                            break;
+                        case 'created':
+                            const aCreated = new Date(a.created_at).getTime();
+                            const bCreated = new Date(b.created_at).getTime();
+                            cmp = aCreated - bCreated;
+                            break;
+                        case 'updated':
+                            const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                            const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+                            cmp = aUpdated - bUpdated;
+                            break;
+                        case 'closed':
+                            const aClosed = a.closed_at ? new Date(a.closed_at).getTime() : 0;
+                            const bClosed = b.closed_at ? new Date(b.closed_at).getTime() : 0;
+                            cmp = aClosed - bClosed;
+                            break;
+                        default:
+                            // Fallback to updated_at
+                            const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                            const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+                            cmp = aTime - bTime;
+                    }
+                    if (cmp !== 0) {
+                        return sortSpec.dir === 'desc' ? -cmp : cmp;
+                    }
+                }
+                // Fallback: sort by updated_at desc
+                const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+                return bTime - aTime;
+            });
+        }
+        else {
+            // Default sort: updated_at desc
+            allCards.sort((a, b) => {
+                const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+                return bTime - aTime;
+            });
+        }
+        const totalCount = allCards.length;
+        // Apply pagination
+        const paginatedCards = allCards.slice(offset, offset + limit);
+        this.output.appendLine(`[DaemonBeadsAdapter] Returning ${paginatedCards.length} cards (page ${Math.floor(offset / limit) + 1}, total: ${totalCount})`);
+        return { cards: paginatedCards, totalCount };
+    }
+    /**
      * Map daemon issue data to BoardData format
      * This implements the data mapping task (beads-nm3)
      */
@@ -762,6 +914,25 @@ class DaemonBeadsAdapter {
             args.push('--due', input.due_at);
         if (input.defer_until)
             args.push('--defer', input.defer_until);
+        if (input.labels && input.labels.length > 0)
+            args.push('--labels', input.labels.join(','));
+        if (input.ephemeral)
+            args.push('--ephemeral');
+        // Note: bd create doesn't support --pinned or --template flags yet
+        // These would need to be set after creation if needed
+        // Build dependencies string for --deps flag
+        const deps = [];
+        if (input.parent_id) {
+            deps.push(`parent-child:${input.parent_id}`);
+        }
+        if (input.blocked_by_ids && input.blocked_by_ids.length > 0) {
+            for (const blockerId of input.blocked_by_ids) {
+                deps.push(`blocks:${blockerId}`);
+            }
+        }
+        if (deps.length > 0) {
+            args.push('--deps', deps.join(','));
+        }
         args.push('--json');
         try {
             const result = await this.execBd(args);
@@ -781,6 +952,16 @@ class DaemonBeadsAdapter {
             // If a non-default status was requested, update it after creation
             if (input.status && input.status !== 'open') {
                 await this.setIssueStatus(issueId, input.status);
+            }
+            // Set pinned and is_template flags if needed (bd create doesn't support these)
+            const updateArgs = [];
+            if (input.pinned)
+                updateArgs.push('--pinned', 'true');
+            if (input.is_template)
+                updateArgs.push('--template', 'true');
+            if (updateArgs.length > 0) {
+                await this.execBd(['update', issueId, ...updateArgs]);
+                this.trackMutation();
             }
             return { id: issueId };
         }

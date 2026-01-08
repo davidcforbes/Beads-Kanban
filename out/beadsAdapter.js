@@ -51,8 +51,7 @@ class BeadsAdapter {
     saveTimeout = null;
     isDirty = false;
     isSaving = false;
-    boardCache = null;
-    cacheTimestamp = 0;
+    isReloading = false; // Prevent concurrent mutations during database reload
     lastSaveTime = 0;
     lastKnownMtime = 0; // Track file modification time to detect external changes
     constructor(output) {
@@ -239,14 +238,16 @@ class BeadsAdapter {
         this.output.appendLine('[BeadsAdapter] Pending saves flushed successfully');
     }
     async reloadDatabase() {
-        // CRITICAL: Flush any pending saves before reloading to prevent data loss
-        await this.flushPendingSaves();
-        if (!this.dbPath) {
-            this.output.appendLine('[BeadsAdapter] reloadDatabase: No database path set, calling ensureConnected');
-            await this.ensureConnected();
-            return;
-        }
+        // Set reload lock to prevent concurrent mutations
+        this.isReloading = true;
         try {
+            // CRITICAL: Flush any pending saves before reloading to prevent data loss
+            await this.flushPendingSaves();
+            if (!this.dbPath) {
+                this.output.appendLine('[BeadsAdapter] reloadDatabase: No database path set, calling ensureConnected');
+                await this.ensureConnected();
+                return;
+            }
             this.output.appendLine(`[BeadsAdapter] Reloading database from ${this.dbPath}`);
             // Close current database if exists
             if (this.db) {
@@ -266,9 +267,6 @@ class BeadsAdapter {
                 throw new Error('Database reloaded but issues table is missing');
             }
             this.db = db;
-            // Clear cache to force fresh data on next getBoard()
-            this.boardCache = null;
-            this.cacheTimestamp = 0;
             // Update mtime tracking to prevent unnecessary reloads
             const stats = await fs_1.promises.stat(this.dbPath);
             this.lastKnownMtime = stats.mtimeMs;
@@ -280,6 +278,20 @@ class BeadsAdapter {
             this.db = null;
             this.dbPath = null;
             await this.ensureConnected();
+        }
+        finally {
+            // Always clear reload lock
+            this.isReloading = false;
+        }
+    }
+    /**
+     * Wait for any ongoing database reload to complete before proceeding with mutations.
+     * This prevents the race condition where mutations occur during reload.
+     */
+    async waitForReloadComplete() {
+        while (this.isReloading) {
+            this.output.appendLine('[BeadsAdapter] Waiting for database reload to complete...');
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
     }
     /**
@@ -331,9 +343,8 @@ class BeadsAdapter {
                 this.db.close();
                 this.db = null;
             }
-            // Clear cache - pending changes were already flushed
+            // Clear pending changes flag - changes were already flushed
             this.isDirty = false;
-            this.boardCache = null;
             // Initialize SQL.js
             const SQL = await (0, sql_js_1.default)({
                 locateFile: (file) => path.join(__dirname, file)
@@ -356,11 +367,6 @@ class BeadsAdapter {
         return this.dbPath;
     }
     async getBoard() {
-        // Check cache (valid for 1 second to reduce DB queries during rapid operations)
-        const now = Date.now();
-        if (this.boardCache && (now - this.cacheTimestamp) < 1000) {
-            return this.boardCache;
-        }
         if (!this.db)
             await this.ensureConnected();
         if (!this.db)
@@ -454,19 +460,27 @@ class BeadsAdapter {
             // Conditionally fetch dependencies based on configuration
             const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
             if (!lazyLoadDependencies) {
-                // Eager load all dependencies (legacy behavior)
-                // Fetch all relevant dependencies where either side is in our issue list
-                // Note: We might miss titles if the "other side" isn't in 'ids' (filtered list?).
-                // Actually, 'issues' query above fetches ALL issues (no WHERE clause except deleted_at IS NULL).
-                // So 'ids' should check all.
-                const allDeps = this.queryAll(`
-          SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
-                 d.created_at, d.created_by, d.metadata, d.thread_id
-          FROM dependencies d
-          JOIN issues i1 ON i1.id = d.issue_id
-          JOIN issues i2 ON i2.id = d.depends_on_id
-          WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
-        `, [...ids, ...ids]);
+                // Eager load all dependencies with batching to avoid N+1 problem
+                // Warning if attempting to eager load with many issues
+                if (ids.length > 500) {
+                    this.output.appendLine(`[BeadsAdapter] Warning: Eager loading dependencies for ${ids.length} issues. Consider enabling lazyLoadDependencies for better performance.`);
+                }
+                // Batch dependencies loading to avoid loading too much data at once
+                const BATCH_SIZE = 100;
+                const allDeps = [];
+                for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                    const batch = ids.slice(i, Math.min(i + BATCH_SIZE, ids.length));
+                    const batchPlaceholders = batch.map(() => '?').join(', ');
+                    const batchDeps = this.queryAll(`
+            SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+                   d.created_at, d.created_by, d.metadata, d.thread_id
+            FROM dependencies d
+            JOIN issues i1 ON i1.id = d.issue_id
+            JOIN issues i2 ON i2.id = d.depends_on_id
+            WHERE (d.issue_id IN (${batchPlaceholders}) OR d.depends_on_id IN (${batchPlaceholders}));
+          `, [...batch, ...batch]);
+                    allDeps.push(...batchDeps);
+                }
                 for (const d of allDeps) {
                     const child = {
                         id: d.issue_id,
@@ -563,9 +577,6 @@ class BeadsAdapter {
             { key: "closed", title: "Closed" }
         ];
         const boardData = { columns, cards };
-        // Update cache
-        this.boardCache = boardData;
-        this.cacheTimestamp = Date.now();
         return boardData;
     }
     /**
@@ -835,15 +846,25 @@ class BeadsAdapter {
             // Conditionally fetch dependencies based on configuration
             const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
             if (!lazyLoadDependencies) {
-                // Fetch dependencies
-                const allDeps = this.queryAll(`
-          SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
-                 d.created_at, d.created_by, d.metadata, d.thread_id
-          FROM dependencies d
-          JOIN issues i1 ON i1.id = d.issue_id
-          JOIN issues i2 ON i2.id = d.depends_on_id
-          WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
-        `, [...ids, ...ids]);
+                // Eager load dependencies with batching to avoid N+1 problem
+                if (ids.length > 500) {
+                    this.output.appendLine(`[BeadsAdapter] Warning: Eager loading dependencies for ${ids.length} issues. Consider enabling lazyLoadDependencies for better performance.`);
+                }
+                const BATCH_SIZE = 100;
+                const allDeps = [];
+                for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                    const batch = ids.slice(i, Math.min(i + BATCH_SIZE, ids.length));
+                    const batchPlaceholders = batch.map(() => '?').join(', ');
+                    const batchDeps = this.queryAll(`
+            SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+                   d.created_at, d.created_by, d.metadata, d.thread_id
+            FROM dependencies d
+            JOIN issues i1 ON i1.id = d.issue_id
+            JOIN issues i2 ON i2.id = d.depends_on_id
+            WHERE (d.issue_id IN (${batchPlaceholders}) OR d.depends_on_id IN (${batchPlaceholders}));
+          `, [...batch, ...batch]);
+                    allDeps.push(...batchDeps);
+                }
                 for (const d of allDeps) {
                     const child = {
                         id: d.issue_id,
@@ -931,7 +952,196 @@ class BeadsAdapter {
         }));
         return cards;
     }
+    /**
+     * Get paginated table data with server-side filtering and sorting.
+     *
+     * @param filters Object containing filter criteria
+     * @param sorting Array of { id: string, dir: 'asc'|'desc' } for sorting
+     * @param offset Starting row index (0-based)
+     * @param limit Number of rows to return
+     * @returns Object containing filtered/sorted cards and total count
+     */
+    async getTableData(filters, sorting, offset, limit) {
+        if (!this.db)
+            await this.ensureConnected();
+        this.output.appendLine(`[BeadsAdapter] getTableData: offset=${offset}, limit=${limit}, filters=${JSON.stringify(filters)}, sorting=${JSON.stringify(sorting)}`);
+        // Build WHERE clause from filters
+        const whereClauses = ['deleted_at IS NULL'];
+        const whereParams = [];
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            whereClauses.push('(title LIKE ? OR id LIKE ? OR description LIKE ?)');
+            whereParams.push(searchTerm, searchTerm, searchTerm);
+        }
+        if (filters.priority) {
+            whereClauses.push('priority = ?');
+            whereParams.push(parseInt(filters.priority));
+        }
+        if (filters.type) {
+            whereClauses.push('issue_type = ?');
+            whereParams.push(filters.type);
+        }
+        if (filters.status) {
+            if (filters.status === 'not_closed') {
+                whereClauses.push('status != ?');
+                whereParams.push('closed');
+            }
+            else if (filters.status === 'active') {
+                whereClauses.push('(status = ? OR status = ?)');
+                whereParams.push('in_progress', 'open');
+            }
+            else if (filters.status === 'blocked') {
+                whereClauses.push('status = ?');
+                whereParams.push('blocked');
+            }
+            else if (filters.status !== 'all') {
+                whereClauses.push('status = ?');
+                whereParams.push(filters.status);
+            }
+        }
+        if (filters.assignee) {
+            if (filters.assignee === 'unassigned') {
+                whereClauses.push('assignee IS NULL');
+            }
+            else {
+                whereClauses.push('assignee = ?');
+                whereParams.push(filters.assignee);
+            }
+        }
+        // For labels filter, need to check if issue has ALL specified labels
+        if (filters.labels && filters.labels.length > 0) {
+            // Use EXISTS subquery to check for all labels
+            const labelChecks = filters.labels.map(() => 'EXISTS (SELECT 1 FROM labels WHERE labels.issue_id = issues.id AND labels.label = ?)').join(' AND ');
+            whereClauses.push(`(${labelChecks})`);
+            whereParams.push(...filters.labels);
+        }
+        const whereClause = whereClauses.join(' AND ');
+        // Build ORDER BY clause from sorting
+        let orderByClause = '';
+        if (sorting && sorting.length > 0) {
+            const orderByClauses = sorting.map(sort => {
+                // Map column IDs to database columns
+                const columnMap = {
+                    'id': 'id',
+                    'title': 'title',
+                    'status': 'status',
+                    'priority': 'priority',
+                    'type': 'issue_type',
+                    'assignee': 'assignee',
+                    'created': 'created_at',
+                    'updated': 'updated_at',
+                    'closed': 'closed_at'
+                };
+                const dbColumn = columnMap[sort.id] || 'updated_at';
+                const direction = sort.dir === 'asc' ? 'ASC' : 'DESC';
+                return `${dbColumn} ${direction}`;
+            });
+            orderByClause = 'ORDER BY ' + orderByClauses.join(', ');
+        }
+        else {
+            // Default sort: updated_at desc
+            orderByClause = 'ORDER BY updated_at DESC';
+        }
+        // Get total count (without pagination)
+        const countResult = this.queryAll(`
+            SELECT COUNT(*) as total
+            FROM issues
+            WHERE ${whereClause}
+        `, whereParams);
+        const totalCount = countResult[0]?.total || 0;
+        this.output.appendLine(`[BeadsAdapter] Total matching rows: ${totalCount}`);
+        // Get paginated results
+        const rows = this.queryAll(`
+            SELECT 
+                id, title, description, status, priority, issue_type as type, assignee,
+                estimated_minutes, created_at, updated_at, closed_at, external_ref,
+                acceptance_criteria, design, notes, due_at, defer_until, pinned,
+                is_template, ephemeral, event_type, event_data, agent_id,
+                agent_metadata, agent_session_id, run_id
+            FROM issues
+            WHERE ${whereClause}
+            ${orderByClause}
+            LIMIT ? OFFSET ?
+        `, [...whereParams, limit, offset]);
+        this.output.appendLine(`[BeadsAdapter] Fetched ${rows.length} rows for current page`);
+        // Fetch labels for the paginated results (skip dependencies for table view performance)
+        const ids = rows.map((r) => r.id);
+        const labelsMap = new Map();
+        if (ids.length > 0) {
+            // Fetch labels in batches
+            const BATCH_SIZE = 100;
+            for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+                const batch = ids.slice(i, Math.min(i + BATCH_SIZE, ids.length));
+                const placeholders = batch.map(() => '?').join(', ');
+                const labelRows = this.queryAll(`
+                    SELECT issue_id, label
+                    FROM labels
+                    WHERE issue_id IN (${placeholders})
+                `, batch);
+                for (const row of labelRows) {
+                    if (!labelsMap.has(row.issue_id)) {
+                        labelsMap.set(row.issue_id, []);
+                    }
+                    labelsMap.get(row.issue_id).push(row.label);
+                }
+            }
+        }
+        // Build BoardCard objects
+        const cards = rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            description: row.description || '',
+            status: row.status,
+            priority: row.priority,
+            issue_type: row.type,
+            assignee: row.assignee || undefined,
+            labels: labelsMap.get(row.id) || [],
+            estimated_minutes: row.estimated_minutes || undefined,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            closed_at: row.closed_at || undefined,
+            external_ref: row.external_ref || undefined,
+            acceptance_criteria: row.acceptance_criteria || '',
+            design: row.design || '',
+            notes: row.notes || '',
+            due_at: row.due_at || undefined,
+            defer_until: row.defer_until || undefined,
+            pinned: row.pinned === 1,
+            is_template: row.is_template === 1,
+            ephemeral: row.ephemeral === 1,
+            // Table view doesn't need is_ready/blocked_by_count, but they're required by BoardCard
+            is_ready: false,
+            blocked_by_count: 0,
+            // Event/agent metadata
+            event_kind: row.event_type || undefined,
+            actor: row.agent_id || undefined,
+            target: undefined,
+            payload: row.event_data ? JSON.stringify(row.event_data) : undefined,
+            sender: undefined,
+            mol_type: undefined,
+            role_type: undefined,
+            rig: undefined,
+            agent_state: undefined,
+            last_activity: undefined,
+            hook_bead: undefined,
+            role_bead: undefined,
+            await_type: undefined,
+            await_id: undefined,
+            timeout_ns: undefined,
+            waiters: undefined,
+            // Dependencies: not loaded for table view (performance)
+            parent: undefined,
+            children: undefined,
+            blocked_by: undefined,
+            blocks: undefined,
+            comments: []
+        }));
+        this.output.appendLine(`[BeadsAdapter] Built ${cards.length} BoardCard objects`);
+        return { cards, totalCount };
+    }
     async createIssue(input) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         if (!this.db)
@@ -957,17 +1167,40 @@ class BeadsAdapter {
         const externalRef = input.external_ref ?? null;
         const dueAt = input.due_at ?? null;
         const deferUntil = input.defer_until ?? null;
+        const pinned = input.pinned ? 1 : 0;
+        const isTemplate = input.is_template ? 1 : 0;
+        const ephemeral = input.ephemeral ? 1 : 0;
         this.runQuery(`
       INSERT INTO issues (
         id, title, description, status, priority, issue_type, assignee, estimated_minutes,
-        acceptance_criteria, design, notes, external_ref, due_at, defer_until
+        acceptance_criteria, design, notes, external_ref, due_at, defer_until,
+        pinned, is_template, ephemeral
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `, [id, title, description, status, priority, issueType, assignee, estimated,
-            acceptanceCriteria, design, notes, externalRef, dueAt, deferUntil]);
+            acceptanceCriteria, design, notes, externalRef, dueAt, deferUntil,
+            pinned, isTemplate, ephemeral]);
+        // Insert labels if provided
+        if (input.labels && input.labels.length > 0) {
+            for (const label of input.labels) {
+                this.runQuery(`INSERT INTO labels (issue_id, label) VALUES (?, ?)`, [id, label]);
+            }
+        }
+        // Insert parent dependency if provided
+        if (input.parent_id) {
+            this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'parent-child')`, [id, input.parent_id]);
+        }
+        // Insert blocker dependencies if provided
+        if (input.blocked_by_ids && input.blocked_by_ids.length > 0) {
+            for (const blockerId of input.blocked_by_ids) {
+                this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'blocks')`, [id, blockerId]);
+            }
+        }
         return { id };
     }
     async setIssueStatus(id, toStatus) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         if (!this.db)
@@ -995,6 +1228,8 @@ class BeadsAdapter {
       `, [toStatus, id]);
     }
     async updateIssue(id, updates) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         const fields = [];
@@ -1074,6 +1309,8 @@ class BeadsAdapter {
     `, values);
     }
     async addComment(issueId, text, author) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         this.runQuery(`
@@ -1082,16 +1319,22 @@ class BeadsAdapter {
     `, [issueId, author, text]);
     }
     async addLabel(issueId, label) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         this.runQuery("INSERT OR IGNORE INTO labels (issue_id, label) VALUES (?, ?)", [issueId, label]);
     }
     async removeLabel(issueId, label) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         this.runQuery("DELETE FROM labels WHERE issue_id = ? AND label = ?", [issueId, label]);
     }
     async addDependency(issueId, dependsOnId, type = 'blocks') {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         this.runQuery(`
@@ -1100,6 +1343,8 @@ class BeadsAdapter {
     `, [issueId, dependsOnId, type]);
     }
     async removeDependency(issueId, dependsOnId) {
+        // Wait for any ongoing reload to complete
+        await this.waitForReloadComplete();
         if (!this.db)
             await this.ensureConnected();
         this.runQuery("DELETE FROM dependencies WHERE issue_id = ? AND depends_on_id = ?", [issueId, dependsOnId]);
@@ -1212,9 +1457,6 @@ class BeadsAdapter {
         // If you need to use db.prepare() manually in the future, you MUST call stmt.free()
         this.db.run(sql, params);
         this.isDirty = true;
-        // Invalidate cache on mutation
-        this.boardCache = null;
-        this.cacheTimestamp = 0;
         this.scheduleSave();
     }
 }

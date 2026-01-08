@@ -19,8 +19,8 @@ exports.IssueUpdateSchema = zod_1.z.object({
         design: zod_1.z.string().max(10000).optional(),
         notes: zod_1.z.string().max(10000).optional(),
         external_ref: zod_1.z.string().max(200).nullable().optional(),
-        due_at: zod_1.z.string().nullable().optional(),
-        defer_until: zod_1.z.string().nullable().optional()
+        due_at: zod_1.z.union([zod_1.z.string().datetime(), zod_1.z.null()]).optional(),
+        defer_until: zod_1.z.union([zod_1.z.string().datetime(), zod_1.z.null()]).optional()
     })
 });
 exports.IssueCreateSchema = zod_1.z.object({
@@ -35,8 +35,14 @@ exports.IssueCreateSchema = zod_1.z.object({
     design: zod_1.z.string().max(10000).optional(),
     notes: zod_1.z.string().max(10000).optional(),
     external_ref: zod_1.z.string().max(200).nullable().optional(),
-    due_at: zod_1.z.string().nullable().optional(),
-    defer_until: zod_1.z.string().nullable().optional()
+    due_at: zod_1.z.union([zod_1.z.string().datetime(), zod_1.z.null()]).optional(),
+    defer_until: zod_1.z.union([zod_1.z.string().datetime(), zod_1.z.null()]).optional(),
+    labels: zod_1.z.array(zod_1.z.string().max(100)).optional(),
+    pinned: zod_1.z.boolean().optional(),
+    is_template: zod_1.z.boolean().optional(),
+    ephemeral: zod_1.z.boolean().optional(),
+    parent_id: zod_1.z.string().max(100).optional(),
+    blocked_by_ids: zod_1.z.array(zod_1.z.string().max(100)).optional()
 });
 exports.SetStatusSchema = zod_1.z.object({
     id: IssueIdSchema,

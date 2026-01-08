@@ -181,7 +181,13 @@ export const IssueCreateSchema = z.object({
   notes: z.string().max(10000).optional(),
   external_ref: z.string().max(200).nullable().optional(),
   due_at: z.union([z.string().datetime(), z.null()]).optional(),
-  defer_until: z.union([z.string().datetime(), z.null()]).optional()
+  defer_until: z.union([z.string().datetime(), z.null()]).optional(),
+  labels: z.array(z.string().max(100)).optional(),
+  pinned: z.boolean().optional(),
+  is_template: z.boolean().optional(),
+  ephemeral: z.boolean().optional(),
+  parent_id: z.string().max(100).optional(),
+  blocked_by_ids: z.array(z.string().max(100)).optional()
 });
 
 export const SetStatusSchema = z.object({

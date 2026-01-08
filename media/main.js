@@ -1419,8 +1419,8 @@ function openDetail(card) {
                             </div>
                             ${!card.parent ? `
                                 <div style="display: flex; gap: 4px;">
-                                    <input id="newParentId" type="text" placeholder="Parent Issue ID" list="${issueOptionsId}" ${disabledAttr} style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
-                                    <button id="btnSetParent" class="btn" ${disabledAttr} style="padding: 2px 8px;">Set</button>
+                                    <input id="newParentId" type="text" placeholder="Parent Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                                    <button id="btnSetParent" class="btn" style="padding: 2px 8px;">Set</button>
                                 </div>
                             ` : ''}
                          </div>
@@ -1438,8 +1438,8 @@ function openDetail(card) {
                           </ul>
                           ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px;">None</div>'}
                           <div style="display: flex; gap: 4px;">
-                                <input id="newBlockerId" type="text" placeholder="Blocker Issue ID" list="${issueOptionsId}" ${disabledAttr} style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
-                                <button id="btnAddBlocker" class="btn" ${disabledAttr} style="padding: 2px 8px;">Add</button>
+                                <input id="newBlockerId" type="text" placeholder="Blocker Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                                <button id="btnAddBlocker" class="btn" style="padding: 2px 8px;">Add</button>
                           </div>
 
                           <!-- Blocks (issues this item blocks) -->
@@ -1461,7 +1461,6 @@ function openDetail(card) {
                               `).join('')}
                             </ul>
                           ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted);">None</div>'}
-                          ${isCreateMode ? '<div style="font-size: 10px; color: var(--muted); margin-top: 6px;">Create the issue to manage relationships.</div>' : ''}
     `;
     
     form.innerHTML = `
@@ -1524,11 +1523,19 @@ function openDetail(card) {
             <!-- Flags -->
             <div style="margin-top: 8px;">
                 <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Flags</label>
-                <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
-                    ${card.pinned ? '<span class="badge badge-flag" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px;">📌 Pinned</span>' : ''}
-                    ${card.is_template ? '<span class="badge badge-flag" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px;">📄 Template</span>' : ''}
-                    ${card.ephemeral ? '<span class="badge badge-flag" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px;">⏱ Ephemeral</span>' : ''}
-                    ${!card.pinned && !card.is_template && !card.ephemeral ? '<span style="font-size: 11px; font-style: italic; color: var(--muted);">None</span>' : ''}
+                <div style="display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                        <input type="checkbox" id="editPinned" ${card.pinned ? 'checked' : ''} style="cursor: pointer;" />
+                        📌 Pinned
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                        <input type="checkbox" id="editTemplate" ${card.is_template ? 'checked' : ''} style="cursor: pointer;" />
+                        📄 Template
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                        <input type="checkbox" id="editEphemeral" ${card.ephemeral ? 'checked' : ''} style="cursor: pointer;" />
+                        ⏱ Ephemeral
+                    </label>
                 </div>
             </div>
 
@@ -1555,10 +1562,9 @@ function openDetail(card) {
                             `).join('')}
                          </div>
                          <div style="display: flex; gap: 4px;">
-                            <input id="newLabel" type="text" placeholder="Add tag..." ${disabledAttr} style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
-                            <button id="btnAddLabel" class="btn" ${disabledAttr} style="padding: 2px 8px;">+</button>
+                            <input id="newLabel" type="text" placeholder="Add tag..." style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                            <button id="btnAddLabel" class="btn" style="padding: 2px 8px;">+</button>
                          </div>
-                         ${isCreateMode ? '<div style="font-size: 10px; color: var(--muted); margin-top: 4px;">Create the issue to add tags.</div>' : ''}
                     </div>
                     <div id="structureSection">
                         ${renderStructureSection()}
@@ -1621,10 +1627,10 @@ function openDetail(card) {
                 </div>
                 
                 <div style="display: flex; gap: 8px;">
-                    <textarea id="newCommentText" rows="2" placeholder="Write a comment..." ${disabledAttr} style="flex: 1; resize: vertical; margin: 0;"></textarea>
-                    <button type="button" id="btnPostComment" class="btn" ${disabledAttr} style="align-self: flex-start; height: auto;">Post</button>
+                    <textarea id="newCommentText" rows="2" placeholder="Write a comment..." style="flex: 1; resize: vertical; margin: 0;"></textarea>
+                    <button type="button" id="btnPostComment" class="btn" style="align-self: flex-start; height: auto;">Post</button>
                 </div>
-                ${isCreateMode ? '<div style="font-size: 10px; color: var(--muted); margin-top: 6px;">Create the issue to add comments.</div>' : ''}
+                ${isCreateMode ? '<div style="font-size: 10px; color: var(--muted); margin-top: 6px;">Comments will be added after issue creation.</div>' : ''}
             </div>
 
             <div class="dialogActions" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -1660,7 +1666,10 @@ function openDetail(card) {
         "editDesc",
         "editAC",
         "editDesign",
-        "editNotes"
+        "editNotes",
+        "editPinned",
+        "editTemplate",
+        "editEphemeral"
     ];
     dirtyFieldIds.forEach((id) => {
         const field = form.querySelector(`#${id}`);
@@ -1690,14 +1699,48 @@ function openDetail(card) {
             description: document.getElementById("editDesc").value,
             acceptance_criteria: document.getElementById("editAC").value,
             design: document.getElementById("editDesign").value,
-            notes: document.getElementById("editNotes").value
+            notes: document.getElementById("editNotes").value,
+            pinned: document.getElementById("editPinned").checked,
+            is_template: document.getElementById("editTemplate").checked,
+            ephemeral: document.getElementById("editEphemeral").checked
         };
+        
+        // In create mode, include labels, parent, and blockers
+        if (isCreateMode) {
+            if (card.labels && card.labels.length > 0) {
+                data.labels = card.labels;
+            }
+            if (card.parent) {
+                data.parent_id = card.parent.id;
+            }
+            if (card.blocked_by && card.blocked_by.length > 0) {
+                data.blocked_by_ids = card.blocked_by.map(b => b.id);
+            }
+        }
 
         if (data.title) {
             try {
                 if (isCreateMode) {
                     // Create new issue
-                    await postAsync("issue.create", data);
+                    const createResponse = await postAsync("issue.create", data);
+                    const newIssueId = createResponse?.payload?.id;
+                    
+                    // Post any comments that were added in create mode
+                    if (newIssueId && card.comments && card.comments.length > 0) {
+                        for (const comment of card.comments) {
+                            try {
+                                await postAsync("issue.addComment", { 
+                                    id: newIssueId, 
+                                    text: comment.text, 
+                                    author: comment.author 
+                                });
+                            } catch (commentErr) {
+                                console.error("Failed to post comment:", commentErr);
+                                // Don't fail the whole operation if a comment fails
+                            }
+                        }
+                    }
+                    
                     toast("Issue created successfully");
                 } else {
                     // Update existing issue
@@ -1738,29 +1781,45 @@ function openDetail(card) {
     }
 
     const btnPostComment = form.querySelector("#btnPostComment");
-    if (btnPostComment && !isCreateMode) {
+    if (btnPostComment) {
         btnPostComment.onclick = async (e) => {
             e.preventDefault();
             const commentInput = form.querySelector("#newCommentText");
             const text = commentInput.value.trim();
             if (!text) return;
 
-            try {
-                await postAsync("issue.addComment", { id: card.id, text, author: "Me" });
+            if (isCreateMode) {
+                // In create mode, just add to local array
                 if (!card.comments) card.comments = [];
                 card.comments.push({
                     id: Date.now(),
-                    issue_id: card.id,
+                    issue_id: null, // Will be set after creation
                     author: "Me",
                     text,
                     created_at: new Date().toISOString()
                 });
                 commentInput.value = "";
                 refreshCommentsDisplay();
-                toast("Comment posted");
-            } catch (err) {
-                console.error("Add comment failed:", err);
-                toast(`Failed to add comment: ${err.message}`);
+                toast("Comment added (will be posted on save)");
+            } else {
+                // In edit mode, call API
+                try {
+                    await postAsync("issue.addComment", { id: card.id, text, author: "Me" });
+                    if (!card.comments) card.comments = [];
+                    card.comments.push({
+                        id: Date.now(),
+                        issue_id: card.id,
+                        author: "Me",
+                        text,
+                        created_at: new Date().toISOString()
+                    });
+                    commentInput.value = "";
+                    refreshCommentsDisplay();
+                    toast("Comment posted");
+                } catch (err) {
+                    console.error("Add comment failed:", err);
+                    toast(`Failed to add comment: ${err.message}`);
+                }
             }
         };
     }
@@ -1784,10 +1843,16 @@ function openDetail(card) {
         `).join('');
         
         // Re-attach remove handlers
-        if (!isCreateMode) {
-            labelsContainer.querySelectorAll(".remove-label").forEach(btn => {
-                btn.onclick = async (e) => {
-                    const label = e.target.dataset.label;
+        labelsContainer.querySelectorAll(".remove-label").forEach(btn => {
+            btn.onclick = async (e) => {
+                const label = e.target.dataset.label;
+                if (isCreateMode) {
+                    // In create mode, just remove from local array
+                    card.labels = (card.labels || []).filter(l => l !== label);
+                    refreshLabelsDisplay();
+                    toast("Label removed");
+                } else {
+                    // In edit mode, call API
                     try {
                         await postAsync("issue.removeLabel", { id: card.id, label });
                         // Update card.labels array
@@ -1801,14 +1866,14 @@ function openDetail(card) {
                         console.error("Remove label failed:", err);
                         toast(`Failed to remove label: ${err.message}`);
                     }
-                };
-            });
-        }
+                }
+            };
+        });
     }
 
     // Label Events - supports comma-separated multiple labels
     const btnAddLabel = form.querySelector("#btnAddLabel");
-    if (btnAddLabel && !isCreateMode) {
+    if (btnAddLabel) {
         btnAddLabel.onclick = async (e) => {
         e.preventDefault();
         const input = form.querySelector("#newLabel");
@@ -1827,34 +1892,48 @@ function openDetail(card) {
         let successCount = 0;
         let failedLabels = [];
 
-        // Add each label
-        for (const label of labels) {
-            try {
-                await postAsync("issue.addLabel", { id: card.id, label });
-                // Update card.labels array
+        if (isCreateMode) {
+            // In create mode, just add to local array
+            for (const label of labels) {
                 if (!card.labels) card.labels = [];
                 if (!card.labels.includes(label)) {
                     card.labels.push(label);
+                    successCount++;
                 }
-                successCount++;
-            } catch (err) {
-                console.error(`Add label '${label}' failed:`, err);
-                failedLabels.push(label);
             }
-        }
-
-        // Show feedback
-        if (successCount > 0) {
             toast(`Added ${successCount} label${successCount > 1 ? 's' : ''}`);
-            input.value = ''; // Clear input on success
-            // Refresh the labels display in dialog
+            input.value = ''; // Clear input
             refreshLabelsDisplay();
-            // Trigger board refresh to show new labels
-            postAsync("board.refresh", {});
-        }
+        } else {
+            // In edit mode, call API for each label
+            for (const label of labels) {
+                try {
+                    await postAsync("issue.addLabel", { id: card.id, label });
+                    // Update card.labels array
+                    if (!card.labels) card.labels = [];
+                    if (!card.labels.includes(label)) {
+                        card.labels.push(label);
+                    }
+                    successCount++;
+                } catch (err) {
+                    console.error(`Add label '${label}' failed:`, err);
+                    failedLabels.push(label);
+                }
+            }
 
-        if (failedLabels.length > 0) {
-            toast(`Failed to add: ${failedLabels.join(', ')}`);
+            // Show feedback
+            if (successCount > 0) {
+                toast(`Added ${successCount} label${successCount > 1 ? 's' : ''}`);
+                input.value = ''; // Clear input on success
+                // Refresh the labels display in dialog
+                refreshLabelsDisplay();
+                // Trigger board refresh to show new labels
+                postAsync("board.refresh", {});
+            }
+
+            if (failedLabels.length > 0) {
+                toast(`Failed to add: ${failedLabels.join(', ')}`);
+            }
         }
 
         // Keep dialog open for adding more labels
@@ -1890,49 +1969,82 @@ function openDetail(card) {
 
     function bindStructureEvents() {
         const btnSetParent = form.querySelector("#btnSetParent");
-        if (btnSetParent && !isCreateMode) {
+        if (btnSetParent) {
             btnSetParent.onclick = async (e) => {
                 e.preventDefault();
                 const parentId = form.querySelector("#newParentId").value.trim();
                 if (!parentId) return;
-                try {
-                    await postAsync("issue.addDependency", { id: card.id, otherId: parentId, type: 'parent-child' });
-                    toast("Parent set");
-                    await refreshRelationshipsFromBoard();
-                } catch (err) {
-                    console.error("Set parent failed:", err);
-                    toast(`Failed to set parent: ${err.message}`);
+                
+                if (isCreateMode) {
+                    // In create mode, store parent locally
+                    card.parent = { id: parentId, title: parentId }; // We'll display just the ID
+                    form.querySelector("#newParentId").value = "";
+                    toast("Parent set (will be applied on save)");
+                    refreshStructureSection();
+                } else {
+                    // In edit mode, call API
+                    try {
+                        await postAsync("issue.addDependency", { id: card.id, otherId: parentId, type: 'parent-child' });
+                        toast("Parent set");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Set parent failed:", err);
+                        toast(`Failed to set parent: ${err.message}`);
+                    }
                 }
             };
         }
 
         const removeParentBtn = form.querySelector("#removeParent");
-        if (removeParentBtn && !isCreateMode) {
+        if (removeParentBtn) {
             removeParentBtn.onclick = async (e) => {
-                try {
-                    await postAsync("issue.removeDependency", { id: card.id, otherId: card.parent.id, type: 'parent-child' });
+                if (isCreateMode) {
+                    // In create mode, just remove from local object
+                    card.parent = null;
                     toast("Parent unlinked");
-                    await refreshRelationshipsFromBoard();
-                } catch (err) {
-                    console.error("Remove parent failed:", err);
-                    toast(`Failed to remove parent: ${err.message}`);
+                    refreshStructureSection();
+                } else {
+                    // In edit mode, call API
+                    try {
+                        await postAsync("issue.removeDependency", { id: card.id, otherId: card.parent.id, type: 'parent-child' });
+                        toast("Parent unlinked");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Remove parent failed:", err);
+                        toast(`Failed to remove parent: ${err.message}`);
+                    }
                 }
             };
         }
 
         const btnAddBlocker = form.querySelector("#btnAddBlocker");
-        if (btnAddBlocker && !isCreateMode) {
+        if (btnAddBlocker) {
             btnAddBlocker.onclick = async (e) => {
                 e.preventDefault();
                 const blockerId = form.querySelector("#newBlockerId").value.trim();
                 if (!blockerId) return;
-                try {
-                    await postAsync("issue.addDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
-                    toast("Blocker added");
-                    await refreshRelationshipsFromBoard();
-                } catch (err) {
-                    console.error("Add blocker failed:", err);
-                    toast(`Failed to add blocker: ${err.message}`);
+                
+                if (isCreateMode) {
+                    // In create mode, add to local array
+                    if (!card.blocked_by) card.blocked_by = [];
+                    if (!card.blocked_by.find(b => b.id === blockerId)) {
+                        card.blocked_by.push({ id: blockerId, title: blockerId });
+                        form.querySelector("#newBlockerId").value = "";
+                        toast("Blocker added (will be applied on save)");
+                        refreshStructureSection();
+                    } else {
+                        toast("Blocker already added");
+                    }
+                } else {
+                    // In edit mode, call API
+                    try {
+                        await postAsync("issue.addDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
+                        toast("Blocker added");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Add blocker failed:", err);
+                        toast(`Failed to add blocker: ${err.message}`);
+                    }
                 }
             };
         }
@@ -1940,13 +2052,22 @@ function openDetail(card) {
         form.querySelectorAll(".remove-blocker").forEach(btn => {
             btn.onclick = async (e) => {
                 const blockerId = e.target.dataset.id;
-                try {
-                    await postAsync("issue.removeDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
+                
+                if (isCreateMode) {
+                    // In create mode, remove from local array
+                    card.blocked_by = (card.blocked_by || []).filter(b => b.id !== blockerId);
                     toast("Blocker removed");
-                    await refreshRelationshipsFromBoard();
-                } catch (err) {
-                    console.error("Remove blocker failed:", err);
-                    toast(`Failed to remove blocker: ${err.message}`);
+                    refreshStructureSection();
+                } else {
+                    // In edit mode, call API
+                    try {
+                        await postAsync("issue.removeDependency", { id: card.id, otherId: blockerId, type: 'blocks' });
+                        toast("Blocker removed");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Remove blocker failed:", err);
+                        toast(`Failed to remove blocker: ${err.message}`);
+                    }
                 }
             };
         });

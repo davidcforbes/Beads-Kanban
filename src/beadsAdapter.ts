@@ -1315,6 +1315,12 @@ export class BeadsAdapter {
     external_ref?: string | null;
     due_at?: string | null;
     defer_until?: string | null;
+    labels?: string[];
+    pinned?: boolean;
+    is_template?: boolean;
+    ephemeral?: boolean;
+    parent_id?: string;
+    blocked_by_ids?: string[];
   }): Promise<{ id: string }> {
     // Wait for any ongoing reload to complete
     await this.waitForReloadComplete();
@@ -1343,15 +1349,39 @@ export class BeadsAdapter {
     const externalRef = input.external_ref ?? null;
     const dueAt = input.due_at ?? null;
     const deferUntil = input.defer_until ?? null;
+    const pinned = input.pinned ? 1 : 0;
+    const isTemplate = input.is_template ? 1 : 0;
+    const ephemeral = input.ephemeral ? 1 : 0;
 
     this.runQuery(`
       INSERT INTO issues (
         id, title, description, status, priority, issue_type, assignee, estimated_minutes,
-        acceptance_criteria, design, notes, external_ref, due_at, defer_until
+        acceptance_criteria, design, notes, external_ref, due_at, defer_until,
+        pinned, is_template, ephemeral
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `, [id, title, description, status, priority, issueType, assignee, estimated,
-        acceptanceCriteria, design, notes, externalRef, dueAt, deferUntil]);
+        acceptanceCriteria, design, notes, externalRef, dueAt, deferUntil,
+        pinned, isTemplate, ephemeral]);
+
+    // Insert labels if provided
+    if (input.labels && input.labels.length > 0) {
+      for (const label of input.labels) {
+        this.runQuery(`INSERT INTO labels (issue_id, label) VALUES (?, ?)`, [id, label]);
+      }
+    }
+
+    // Insert parent dependency if provided
+    if (input.parent_id) {
+      this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'parent-child')`, [id, input.parent_id]);
+    }
+
+    // Insert blocker dependencies if provided
+    if (input.blocked_by_ids && input.blocked_by_ids.length > 0) {
+      for (const blockerId of input.blocked_by_ids) {
+        this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'blocks')`, [id, blockerId]);
+      }
+    }
 
     return { id };
   }

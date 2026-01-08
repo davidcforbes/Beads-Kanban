@@ -986,6 +986,12 @@ export class DaemonBeadsAdapter {
     external_ref?: string | null;
     due_at?: string | null;
     defer_until?: string | null;
+    labels?: string[];
+    pinned?: boolean;
+    is_template?: boolean;
+    ephemeral?: boolean;
+    parent_id?: string;
+    blocked_by_ids?: string[];
   }): Promise<{ id: string }> {
     const title = (input.title ?? '').trim();
     if (!title) {
@@ -1010,6 +1016,24 @@ export class DaemonBeadsAdapter {
     if (input.external_ref) args.push('--external-ref', input.external_ref);
     if (input.due_at) args.push('--due', input.due_at);
     if (input.defer_until) args.push('--defer', input.defer_until);
+    if (input.labels && input.labels.length > 0) args.push('--labels', input.labels.join(','));
+    if (input.ephemeral) args.push('--ephemeral');
+    // Note: bd create doesn't support --pinned or --template flags yet
+    // These would need to be set after creation if needed
+    
+    // Build dependencies string for --deps flag
+    const deps: string[] = [];
+    if (input.parent_id) {
+      deps.push(`parent-child:${input.parent_id}`);
+    }
+    if (input.blocked_by_ids && input.blocked_by_ids.length > 0) {
+      for (const blockerId of input.blocked_by_ids) {
+        deps.push(`blocks:${blockerId}`);
+      }
+    }
+    if (deps.length > 0) {
+      args.push('--deps', deps.join(','));
+    }
 
     args.push('--json');
 
@@ -1032,6 +1056,16 @@ export class DaemonBeadsAdapter {
       // If a non-default status was requested, update it after creation
       if (input.status && input.status !== 'open') {
         await this.setIssueStatus(issueId, input.status);
+      }
+      
+      // Set pinned and is_template flags if needed (bd create doesn't support these)
+      const updateArgs = [];
+      if (input.pinned) updateArgs.push('--pinned', 'true');
+      if (input.is_template) updateArgs.push('--template', 'true');
+      
+      if (updateArgs.length > 0) {
+        await this.execBd(['update', issueId, ...updateArgs]);
+        this.trackMutation();
       }
 
       return { id: issueId };
