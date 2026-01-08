@@ -1519,11 +1519,23 @@ function openDetail(card) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
                  <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Due At</label>
-                    <input id="editDueAt" type="datetime-local" value="${toLocalDateTimeInput(card.due_at)}" style="width: 100%; margin-top: 4px;" />
+                    <div class="datetime-wrapper" style="position: relative;">
+                        <input id="editDueAt" type="datetime-local" value="${toLocalDateTimeInput(card.due_at)}" style="width: 100%; margin-top: 4px;" data-original-value="${toLocalDateTimeInput(card.due_at)}" />
+                        <div class="datetime-buttons" style="display: none; margin-top: 4px; gap: 4px;">
+                            <button class="btn datetime-save" style="padding: 2px 8px; font-size: 11px;">Save</button>
+                            <button class="btn datetime-cancel" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Defer Until</label>
-                    <input id="editDeferUntil" type="datetime-local" value="${toLocalDateTimeInput(card.defer_until)}" style="width: 100%; margin-top: 4px;" />
+                    <div class="datetime-wrapper" style="position: relative;">
+                        <input id="editDeferUntil" type="datetime-local" value="${toLocalDateTimeInput(card.defer_until)}" style="width: 100%; margin-top: 4px;" data-original-value="${toLocalDateTimeInput(card.defer_until)}" />
+                        <div class="datetime-buttons" style="display: none; margin-top: 4px; gap: 4px;">
+                            <button class="btn datetime-save" style="padding: 2px 8px; font-size: 11px;">Save</button>
+                            <button class="btn datetime-cancel" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -2208,6 +2220,37 @@ ${card.design || 'None'}
                 preview.style.display = "none";
                 e.target.textContent = "Preview";
             }
+        };
+    });
+
+    // Datetime input Save/Cancel functionality
+    form.querySelectorAll(".datetime-wrapper").forEach(wrapper => {
+        const input = wrapper.querySelector("input[type='datetime-local']");
+        const buttonsDiv = wrapper.querySelector(".datetime-buttons");
+        const saveBtn = wrapper.querySelector(".datetime-save");
+        const cancelBtn = wrapper.querySelector(".datetime-cancel");
+
+        if (!input || !buttonsDiv || !saveBtn || !cancelBtn) return;
+
+        // Show buttons when value changes
+        input.addEventListener("change", () => {
+            buttonsDiv.style.display = "flex";
+        });
+
+        // Save: hide buttons, keep value, update original value
+        saveBtn.onclick = (e) => {
+            e.preventDefault();
+            input.dataset.originalValue = input.value;
+            buttonsDiv.style.display = "none";
+            toast("Date/time saved");
+        };
+
+        // Cancel: restore original value, hide buttons
+        cancelBtn.onclick = (e) => {
+            e.preventDefault();
+            input.value = input.dataset.originalValue;
+            buttonsDiv.style.display = "none";
+            toast("Date/time change cancelled");
         };
     });
 
