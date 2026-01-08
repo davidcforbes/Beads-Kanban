@@ -271,8 +271,8 @@ suite('Relationships and Metadata Tests', () => {
                 assert.ok(blockerCard, 'Blocker issue should exist');
 
                 // Verify blocked issue has blockedBy
-                assert.ok(blockedCard.blockedBy && blockedCard.blockedBy.length > 0, 'Blocked issue should have blockedBy');
-                assert.ok(blockedCard.blockedBy.some(b => b.id === blocker.id), 'Should be blocked by blocker issue');
+                assert.ok(blockedCard.blocked_by && blockedCard.blocked_by.length > 0, 'Blocked issue should have blockedBy');
+                assert.ok(blockedCard.blocked_by.some(b => b.id === blocker.id), 'Should be blocked by blocker issue');
 
                 // Verify blocker issue has blocks
                 assert.ok(blockerCard.blocks && blockerCard.blocks.length > 0, 'Blocker should have blocks array');
@@ -300,8 +300,8 @@ suite('Relationships and Metadata Tests', () => {
                 const blockedCard = board.cards.find(c => c.id === blocked.id);
 
                 assert.ok(blockedCard, 'Blocked issue should exist');
-                assert.ok(blockedCard.blockedBy, 'Should have blockedBy array');
-                assert.strictEqual(blockedCard.blockedBy.length, 2, 'Should be blocked by 2 issues');
+                assert.ok(blockedCard.blocked_by, 'Should have blockedBy array');
+                assert.strictEqual(blockedCard.blocked_by.length, 2, 'Should be blocked by 2 issues');
             } catch (err) {
                 if (err instanceof Error && err.message.includes('No .beads directory')) {
                     this.skip();
@@ -322,7 +322,7 @@ suite('Relationships and Metadata Tests', () => {
                 // Verify dependency added
                 let board = await adapter.getBoard();
                 let blockedCard = board.cards.find(c => c.id === blocked.id);
-                assert.ok(blockedCard?.blockedBy && blockedCard.blockedBy.length > 0, 'Should have blocker initially');
+                assert.ok(blockedCard?.blocked_by && blockedCard.blocked_by.length > 0, 'Should have blocker initially');
 
                 // Remove dependency
                 await adapter.removeDependency(blocked.id, blocker.id);
@@ -330,7 +330,7 @@ suite('Relationships and Metadata Tests', () => {
                 board = await adapter.getBoard();
                 blockedCard = board.cards.find(c => c.id === blocked.id);
 
-                assert.ok(!blockedCard?.blockedBy || blockedCard.blockedBy.length === 0, 'Should have no blockers after removal');
+                assert.ok(!blockedCard?.blocked_by || blockedCard.blocked_by.length === 0, 'Should have no blockers after removal');
             } catch (err) {
                 if (err instanceof Error && err.message.includes('No .beads directory')) {
                     this.skip();
@@ -511,7 +511,7 @@ suite('Relationships and Metadata Tests', () => {
                 // (open status but has blockers)
                 const blockedCard = board.cards.find(c => c.id === blocked.id);
                 assert.ok(blockedCard, 'Blocked issue should exist');
-                assert.ok(blockedCard.blockedBy && blockedCard.blockedBy.length > 0, 'Should have blockers');
+                assert.ok(blockedCard.blocked_by && blockedCard.blocked_by.length > 0, 'Should have blockers');
             } catch (err) {
                 if (err instanceof Error && err.message.includes('No .beads directory')) {
                     this.skip();

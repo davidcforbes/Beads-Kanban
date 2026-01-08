@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export type IssueStatus = "open" | "in_progress" | "blocked" | "closed";
 
+export type IssueType = "task" | "bug" | "feature" | "epic" | "chore";
+
 export type BoardColumnKey = "ready" | "open" | "in_progress" | "blocked" | "closed";
 
 export interface IssueRow {
