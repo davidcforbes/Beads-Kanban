@@ -24,6 +24,7 @@ export class DaemonBeadsAdapter {
   private circuitBreakerState: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
   private consecutiveFailures: number = 0;
   private circuitOpenedAt: number = 0;
+  private circuitRecoveryTimer: NodeJS.Timeout | null = null;
   private readonly CIRCUIT_FAILURE_THRESHOLD = 5;
   private readonly CIRCUIT_RESET_TIMEOUT_MS = 60000; // 1 minute
 
@@ -84,6 +85,7 @@ export class DaemonBeadsAdapter {
     if (this.circuitBreakerState === 'HALF_OPEN') {
       this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery successful, closing circuit');
       this.circuitBreakerState = 'CLOSED';
+      this.cancelCircuitRecovery();
     }
     this.consecutiveFailures = 0;
   }
@@ -100,6 +102,7 @@ export class DaemonBeadsAdapter {
       this.circuitBreakerState = 'OPEN';
       this.circuitOpenedAt = Date.now();
       this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery test failed, reopening circuit');
+      this.scheduleCircuitRecovery();
       return;
     }
 
@@ -107,6 +110,9 @@ export class DaemonBeadsAdapter {
       this.circuitBreakerState = 'OPEN';
       this.circuitOpenedAt = Date.now();
       this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: OPENED after ${this.consecutiveFailures} consecutive failures`);
+
+      // Schedule automatic recovery attempt
+      this.scheduleCircuitRecovery();
 
       // Show user-friendly error with actionable guidance
       vscode.window.showErrorMessage(
@@ -120,9 +126,40 @@ export class DaemonBeadsAdapter {
           // Force reset circuit breaker and try again
           this.circuitBreakerState = 'CLOSED';
           this.consecutiveFailures = 0;
+          this.cancelCircuitRecovery();
           vscode.commands.executeCommand('beads.refresh');
         }
       });
+    }
+  }
+
+  /**
+   * Schedule automatic circuit recovery attempt after timeout.
+   * This ensures the circuit breaker transitions to HALF_OPEN even if no requests come in.
+   */
+  private scheduleCircuitRecovery(): void {
+    // Clear any existing timer
+    this.cancelCircuitRecovery();
+
+    // Schedule recovery attempt after timeout
+    this.circuitRecoveryTimer = setTimeout(() => {
+      if (this.circuitBreakerState === 'OPEN') {
+        this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Automatic recovery attempt triggered');
+        // Trigger a board reload which will check the circuit and transition to HALF_OPEN
+        vscode.commands.executeCommand('beads.refresh');
+      }
+    }, this.CIRCUIT_RESET_TIMEOUT_MS);
+
+    this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Scheduled automatic recovery in ${this.CIRCUIT_RESET_TIMEOUT_MS / 1000}s`);
+  }
+
+  /**
+   * Cancel any pending circuit recovery timer.
+   */
+  private cancelCircuitRecovery(): void {
+    if (this.circuitRecoveryTimer) {
+      clearTimeout(this.circuitRecoveryTimer);
+      this.circuitRecoveryTimer = null;
     }
   }
 
@@ -999,6 +1036,7 @@ export class DaemonBeadsAdapter {
    * Cleanup resources
    */
   public dispose(): void {
+    this.cancelCircuitRecovery();
     this.boardCache = null;
     this.output.appendLine('[DaemonBeadsAdapter] Disposed');
   }

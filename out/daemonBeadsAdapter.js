@@ -46,59 +46,220 @@ class DaemonBeadsAdapter {
     boardCache = null;
     cacheTimestamp = 0;
     lastMutationTime = 0;
+    // Circuit breaker state for batch failure recovery
+    circuitBreakerState = 'CLOSED';
+    consecutiveFailures = 0;
+    circuitOpenedAt = 0;
+    circuitRecoveryTimer = null;
+    CIRCUIT_FAILURE_THRESHOLD = 5;
+    CIRCUIT_RESET_TIMEOUT_MS = 60000; // 1 minute
     constructor(workspaceRoot, output) {
         this.workspaceRoot = workspaceRoot;
         this.output = output;
     }
     /**
-     * Execute a bd CLI command and return parsed JSON output
+     * Sanitize CLI argument to prevent command injection and parsing issues
+     * Removes null bytes, excessive whitespace, and other problematic characters
      */
-    async execBd(args) {
+    sanitizeCliArg(arg) {
+        if (typeof arg !== 'string') {
+            return String(arg);
+        }
+        return arg
+            // Remove null bytes (can cause command truncation)
+            .replace(/\0/g, '')
+            // Replace newlines with spaces (prevents command splitting)
+            .replace(/[\r\n]+/g, ' ')
+            // Collapse multiple spaces into single space
+            .replace(/\s+/g, ' ')
+            // Trim leading/trailing whitespace
+            .trim();
+    }
+    /**
+     * Check if the circuit breaker is currently open.
+     * Automatically transitions from OPEN to HALF_OPEN after timeout.
+     */
+    isCircuitOpen() {
+        if (this.circuitBreakerState === 'CLOSED') {
+            return false;
+        }
+        if (this.circuitBreakerState === 'OPEN') {
+            // Check if timeout has elapsed to transition to HALF_OPEN
+            const now = Date.now();
+            if (now - this.circuitOpenedAt >= this.CIRCUIT_RESET_TIMEOUT_MS) {
+                this.circuitBreakerState = 'HALF_OPEN';
+                this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Transitioning to HALF_OPEN (testing recovery)');
+                return false; // Allow the request through
+            }
+            return true; // Still open, block the request
+        }
+        // HALF_OPEN state - allow request through to test recovery
+        return false;
+    }
+    /**
+     * Record a successful batch operation.
+     * Closes the circuit if in HALF_OPEN state, resets failure counter.
+     */
+    recordCircuitSuccess() {
+        if (this.circuitBreakerState === 'HALF_OPEN') {
+            this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery successful, closing circuit');
+            this.circuitBreakerState = 'CLOSED';
+            this.cancelCircuitRecovery();
+        }
+        this.consecutiveFailures = 0;
+    }
+    /**
+     * Record a failed batch operation.
+     * Opens the circuit after threshold failures, shows user-friendly error.
+     */
+    recordCircuitFailure() {
+        this.consecutiveFailures++;
+        if (this.circuitBreakerState === 'HALF_OPEN') {
+            // Failed during recovery test - reopen circuit
+            this.circuitBreakerState = 'OPEN';
+            this.circuitOpenedAt = Date.now();
+            this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery test failed, reopening circuit');
+            this.scheduleCircuitRecovery();
+            return;
+        }
+        if (this.consecutiveFailures >= this.CIRCUIT_FAILURE_THRESHOLD) {
+            this.circuitBreakerState = 'OPEN';
+            this.circuitOpenedAt = Date.now();
+            this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: OPENED after ${this.consecutiveFailures} consecutive failures`);
+            // Schedule automatic recovery attempt
+            this.scheduleCircuitRecovery();
+            // Show user-friendly error with actionable guidance
+            vscode.window.showErrorMessage('Beads: Unable to load issues due to repeated errors. The system will retry automatically in 1 minute.', 'View Logs', 'Reload Now').then(action => {
+                if (action === 'View Logs') {
+                    this.output.show();
+                }
+                else if (action === 'Reload Now') {
+                    // Force reset circuit breaker and try again
+                    this.circuitBreakerState = 'CLOSED';
+                    this.consecutiveFailures = 0;
+                    this.cancelCircuitRecovery();
+                    vscode.commands.executeCommand('beads.refresh');
+                }
+            });
+        }
+    }
+    /**
+     * Schedule automatic circuit recovery attempt after timeout.
+     * This ensures the circuit breaker transitions to HALF_OPEN even if no requests come in.
+     */
+    scheduleCircuitRecovery() {
+        // Clear any existing timer
+        this.cancelCircuitRecovery();
+        // Schedule recovery attempt after timeout
+        this.circuitRecoveryTimer = setTimeout(() => {
+            if (this.circuitBreakerState === 'OPEN') {
+                this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Automatic recovery attempt triggered');
+                // Trigger a board reload which will check the circuit and transition to HALF_OPEN
+                vscode.commands.executeCommand('beads.refresh');
+            }
+        }, this.CIRCUIT_RESET_TIMEOUT_MS);
+        this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Scheduled automatic recovery in ${this.CIRCUIT_RESET_TIMEOUT_MS / 1000}s`);
+    }
+    /**
+     * Cancel any pending circuit recovery timer.
+     */
+    cancelCircuitRecovery() {
+        if (this.circuitRecoveryTimer) {
+            clearTimeout(this.circuitRecoveryTimer);
+            this.circuitRecoveryTimer = null;
+        }
+    }
+    /**
+     * Execute a bd CLI command and return parsed JSON output
+     * @param args Command arguments to pass to bd (will be sanitized)
+     * @param timeoutMs Timeout in milliseconds (default: 30000ms = 30s)
+     */
+    async execBd(args, timeoutMs = 30000) {
+        // Sanitize all arguments before passing to CLI
+        const sanitizedArgs = args.map(arg => this.sanitizeCliArg(arg));
         return new Promise((resolve, reject) => {
-            const command = `bd ${args.join(' ')}`;
-            const child = (0, child_process_1.spawn)('bd', args, {
+            const command = `bd ${sanitizedArgs.join(' ')}`;
+            const child = (0, child_process_1.spawn)('bd', sanitizedArgs, {
                 cwd: this.workspaceRoot,
                 shell: false
             });
             let stdout = '';
             let stderr = '';
+            let killed = false;
+            // Buffer size limit: 10MB to prevent memory issues
+            const MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+            // Set up timeout
+            const timeoutHandle = setTimeout(() => {
+                if (!killed) {
+                    killed = true;
+                    child.kill('SIGTERM');
+                    this.output.appendLine(`[DaemonBeadsAdapter] Command timed out after ${timeoutMs}ms: ${command}`);
+                    reject(new Error(`Command timed out after ${timeoutMs}ms: ${command}`));
+                }
+            }, timeoutMs);
             child.stdout.on('data', (data) => {
                 stdout += data.toString();
+                // Check buffer size limit
+                if (stdout.length > MAX_BUFFER_SIZE) {
+                    if (!killed) {
+                        killed = true;
+                        clearTimeout(timeoutHandle);
+                        child.kill('SIGTERM');
+                        this.output.appendLine(`[DaemonBeadsAdapter] Command exceeded buffer limit (${MAX_BUFFER_SIZE} bytes): ${command}`);
+                        reject(new Error(`Command output exceeded ${MAX_BUFFER_SIZE} bytes limit`));
+                    }
+                }
             });
             child.stderr.on('data', (data) => {
                 stderr += data.toString();
-            });
-            child.on('error', (error) => {
-                this.output.appendLine(`[DaemonBeadsAdapter] Command error: ${error.message}`);
-                this.output.appendLine(`[DaemonBeadsAdapter] Command context: ${command} (cwd: ${this.workspaceRoot})`);
-                this.output.appendLine(`[DaemonBeadsAdapter] PATH: ${process.env.PATH ?? ''}`);
-                this.output.appendLine(`[DaemonBeadsAdapter] PATHEXT: ${process.env.PATHEXT ?? ''}`);
-                reject(error);
-            });
-            child.on('close', (code) => {
-                if (code === 0) {
-                    const trimmed = stdout.trim();
-                    if (!trimmed) {
-                        // No output - success for mutation commands
-                        resolve(null);
-                        return;
-                    }
-                    try {
-                        // Try parsing as JSON (for query commands like list/show)
-                        const result = JSON.parse(trimmed);
-                        resolve(result);
-                    }
-                    catch (error) {
-                        // Not JSON - likely a friendly message from mutation commands
-                        // This is fine, just return null to indicate success
-                        this.output.appendLine(`[DaemonBeadsAdapter] Non-JSON output: ${trimmed}`);
-                        resolve(null);
+                // Check buffer size limit for stderr too
+                if (stderr.length > MAX_BUFFER_SIZE) {
+                    if (!killed) {
+                        killed = true;
+                        clearTimeout(timeoutHandle);
+                        child.kill('SIGTERM');
+                        this.output.appendLine(`[DaemonBeadsAdapter] Command error output exceeded buffer limit: ${command}`);
+                        reject(new Error(`Command error output exceeded ${MAX_BUFFER_SIZE} bytes limit`));
                     }
                 }
-                else {
+            });
+            child.on('error', (error) => {
+                if (!killed) {
+                    clearTimeout(timeoutHandle);
+                    this.output.appendLine(`[DaemonBeadsAdapter] Command error: ${error.message}`);
                     this.output.appendLine(`[DaemonBeadsAdapter] Command context: ${command} (cwd: ${this.workspaceRoot})`);
-                    this.output.appendLine(`[DaemonBeadsAdapter] Command failed (exit ${code}): ${stderr || stdout}`);
-                    reject(new Error(`bd command failed with exit code ${code}: ${stderr || stdout}`));
+                    this.output.appendLine(`[DaemonBeadsAdapter] PATH: ${process.env.PATH ?? ''}`);
+                    this.output.appendLine(`[DaemonBeadsAdapter] PATHEXT: ${process.env.PATHEXT ?? ''}`);
+                    reject(error);
+                }
+            });
+            child.on('close', (code) => {
+                if (!killed) {
+                    clearTimeout(timeoutHandle);
+                    if (code === 0) {
+                        const trimmed = stdout.trim();
+                        if (!trimmed) {
+                            // No output - success for mutation commands
+                            resolve(null);
+                            return;
+                        }
+                        try {
+                            // Try parsing as JSON (for query commands like list/show)
+                            const result = JSON.parse(trimmed);
+                            resolve(result);
+                        }
+                        catch (error) {
+                            // Not JSON - likely a friendly message from mutation commands
+                            // This is fine, just return null to indicate success
+                            this.output.appendLine(`[DaemonBeadsAdapter] Non-JSON output: ${trimmed}`);
+                            resolve(null);
+                        }
+                    }
+                    else {
+                        this.output.appendLine(`[DaemonBeadsAdapter] Command context: ${command} (cwd: ${this.workspaceRoot})`);
+                        this.output.appendLine(`[DaemonBeadsAdapter] Command failed (exit ${code}): ${stderr || stdout}`);
+                        reject(new Error(`bd command failed with exit code ${code}: ${stderr || stdout}`));
+                    }
                 }
             });
         });
@@ -150,9 +311,10 @@ class DaemonBeadsAdapter {
      * No-op for daemon adapter (not needed for external save detection)
      */
     isRecentSelfSave() {
-        // Consider a mutation "recent" if it happened within the last 2 seconds
+        // Consider a mutation "recent" if it happened within the last 3 seconds
         // This accounts for: bd command execution (~500ms), file write, file watcher debounce (300ms), and buffer
-        return (Date.now() - this.lastMutationTime) < 2000;
+        // Increased from 2s to 3s to prevent edge-case race conditions
+        return (Date.now() - this.lastMutationTime) < 3000;
     }
     /**
      * Get board data from bd daemon
@@ -209,10 +371,18 @@ class DaemonBeadsAdapter {
                         throw new Error('Expected array from bd show --json <ids>');
                     }
                     detailedIssues.push(...batchResults);
+                    // Record successful batch
+                    this.recordCircuitSuccess();
                 }
                 catch (error) {
+                    // Check circuit breaker before retrying
+                    if (this.isCircuitOpen()) {
+                        this.recordCircuitFailure();
+                        throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
+                    }
                     // If batch fails (likely due to missing/invalid ID), try each issue individually
                     this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
+                    let batchFailureCount = 0;
                     for (const id of batch) {
                         try {
                             const singleResult = await this.execBd(['show', '--json', id]);
@@ -221,9 +391,23 @@ class DaemonBeadsAdapter {
                             }
                         }
                         catch (singleError) {
+                            batchFailureCount++;
                             // Skip this issue - it may have been deleted or is invalid
                             this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
                         }
+                    }
+                    // Record batch result based on failure rate
+                    if (batchFailureCount === batch.length) {
+                        // Entire batch failed - record as circuit failure
+                        this.recordCircuitFailure();
+                    }
+                    else if (batchFailureCount > 0) {
+                        // Partial failure - don't count as full failure
+                        this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
+                    }
+                    else {
+                        // All succeeded on retry - record success
+                        this.recordCircuitSuccess();
                     }
                 }
             }
@@ -282,12 +466,17 @@ class DaemonBeadsAdapter {
                     result = await this.execBd(['list', '--status=in_progress', '--json', '--limit', '0']);
                     break;
                 case 'blocked':
-                    // Use bd blocked
-                    result = await this.execBd(['blocked', '--json']);
+                    // IMPROVEMENT: Use bd list --status=blocked instead of bd blocked
+                    // This is more efficient and consistent with getColumnData
+                    result = await this.execBd(['list', '--status=blocked', '--json', '--limit', '0']);
                     break;
                 case 'closed':
                     // Use bd list with status filter
                     result = await this.execBd(['list', '--status=closed', '--json', '--limit', '0']);
+                    break;
+                case 'open':
+                    // Use bd list with status filter
+                    result = await this.execBd(['list', '--status=open', '--json', '--limit', '0']);
                     break;
                 default:
                     throw new Error(`Unknown column: ${column}`);
@@ -309,26 +498,40 @@ class DaemonBeadsAdapter {
             switch (column) {
                 case 'ready':
                     // Use bd ready - it returns issues with no blockers
-                    // Note: bd ready doesn't support --offset, so we fetch all and slice client-side
+                    // LIMITATION: bd ready doesn't support --offset, so we fetch offset+limit and slice
+                    // This means for offset=100, limit=50, we fetch 150 rows and discard the first 100
+                    // This is inefficient but necessary until bd CLI adds --offset support
+                    if (offset > 500) {
+                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for ready column may cause performance issues`);
+                    }
                     const readyResult = await this.execBd(['ready', '--json', '--limit', String(offset + limit)]);
                     basicIssues = Array.isArray(readyResult) ? readyResult.slice(offset, offset + limit) : [];
                     break;
                 case 'in_progress':
                     // Use bd list with status filter
-                    // bd list supports --limit but not --offset, so fetch offset+limit and slice
+                    // LIMITATION: bd list supports --limit but not --offset
                     const inProgressResult = await this.execBd(['list', '--status=in_progress', '--json', '--limit', String(offset + limit)]);
                     basicIssues = Array.isArray(inProgressResult) ? inProgressResult.slice(offset, offset + limit) : [];
                     break;
                 case 'blocked':
-                    // Use bd blocked
-                    // Note: bd blocked doesn't support pagination, fetch all and slice
-                    const blockedResult = await this.execBd(['blocked', '--json']);
+                    // IMPROVEMENT: Use bd list with appropriate filters instead of bd blocked
+                    // bd blocked fetches ALL issues which is very inefficient for large databases
+                    // Instead, we can use bd list --status=blocked to leverage existing pagination
+                    if (offset > 500) {
+                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for blocked column may cause performance issues`);
+                    }
+                    const blockedResult = await this.execBd(['list', '--status=blocked', '--json', '--limit', String(offset + limit)]);
                     basicIssues = Array.isArray(blockedResult) ? blockedResult.slice(offset, offset + limit) : [];
                     break;
                 case 'closed':
-                    // Use bd list with status filter
+                    // Use bd list with status filter (supports --limit)
                     const closedResult = await this.execBd(['list', '--status=closed', '--json', '--limit', String(offset + limit)]);
                     basicIssues = Array.isArray(closedResult) ? closedResult.slice(offset, offset + limit) : [];
+                    break;
+                case 'open':
+                    // Use bd list with status filter (supports --limit)
+                    const openResult = await this.execBd(['list', '--status=open', '--json', '--limit', String(offset + limit)]);
+                    basicIssues = Array.isArray(openResult) ? openResult.slice(offset, offset + limit) : [];
                     break;
                 default:
                     throw new Error(`Unknown column: ${column}`);
@@ -348,10 +551,18 @@ class DaemonBeadsAdapter {
                         throw new Error('Expected array from bd show --json <ids>');
                     }
                     detailedIssues.push(...batchResults);
+                    // Record successful batch
+                    this.recordCircuitSuccess();
                 }
                 catch (error) {
+                    // Check circuit breaker before retrying
+                    if (this.isCircuitOpen()) {
+                        this.recordCircuitFailure();
+                        throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
+                    }
                     // If batch fails, try each issue individually
                     this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
+                    let batchFailureCount = 0;
                     for (const id of batch) {
                         try {
                             const singleResult = await this.execBd(['show', '--json', id]);
@@ -360,8 +571,22 @@ class DaemonBeadsAdapter {
                             }
                         }
                         catch (singleError) {
+                            batchFailureCount++;
                             this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
                         }
+                    }
+                    // Record batch result based on failure rate
+                    if (batchFailureCount === batch.length) {
+                        // Entire batch failed - record as circuit failure
+                        this.recordCircuitFailure();
+                    }
+                    else if (batchFailureCount > 0) {
+                        // Partial failure - don't count as full failure
+                        this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
+                    }
+                    else {
+                        // All succeeded on retry - record success
+                        this.recordCircuitSuccess();
                     }
                 }
             }
@@ -718,6 +943,7 @@ class DaemonBeadsAdapter {
      * Cleanup resources
      */
     dispose() {
+        this.cancelCircuitRecovery();
         this.boardCache = null;
         this.output.appendLine('[DaemonBeadsAdapter] Disposed');
     }

@@ -1,8 +1,39 @@
-import * as assert from 'assert';
-import * as vscode from 'vscode';
-import { DaemonBeadsAdapter } from '../../daemonBeadsAdapter';
-import * as sinon from 'sinon';
-
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+const assert = __importStar(require("assert"));
 suite('Daemon Integration and Status Bar Tests', () => {
     suite('Daemon Adapter Configuration', () => {
         test('Note: Daemon adapter is controlled by beadsKanban.useDaemonAdapter setting', () => {
@@ -12,14 +43,12 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Setting can be in workspace or user settings
             assert.ok(true, 'useDaemonAdapter setting controls which adapter is used');
         });
-
         test('Note: Default should be false (use sql.js adapter)', () => {
             // Most users will not have daemon running
             // sql.js adapter works out of the box
             // Daemon adapter requires bd CLI installation and daemon running
             assert.ok(true, 'Default should be sql.js adapter (useDaemonAdapter: false)');
         });
-
         test('Note: Switching adapters requires webview reload', () => {
             // When useDaemonAdapter setting changes:
             // 1. Extension detects via onDidChangeConfiguration
@@ -29,7 +58,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // User sees brief loading screen
             assert.ok(true, 'Changing adapters triggers disconnect, reconnect, and reload');
         });
-
         test('Note: Daemon adapter requires bd CLI on PATH', () => {
             // DaemonBeadsAdapter spawns 'bd' commands
             // If bd not found:
@@ -40,7 +68,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Daemon adapter requires bd CLI to be installed and on PATH');
         });
     });
-
     suite('Status Bar Item', () => {
         test('Note: Status bar shows adapter type and daemon status', () => {
             // Status bar item displays:
@@ -51,7 +78,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Uses $(plug) icon for visual indicator
             assert.ok(true, 'Status bar shows current adapter and daemon state');
         });
-
         test('Note: Status bar is clickable', () => {
             // Clicking status bar item shows quick pick menu:
             // - Show Daemon Status
@@ -63,7 +89,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // - Refresh Board
             assert.ok(true, 'Status bar click shows action menu');
         });
-
         test('Note: Status bar updates automatically', () => {
             // DaemonManager polls daemon status every 10 seconds
             // When status changes (running -> stopped):
@@ -72,7 +97,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 3. Show notification if daemon unexpectedly stopped
             assert.ok(true, 'Status bar updates automatically via polling');
         });
-
         test('Note: Status bar tooltip shows details', () => {
             // Tooltip includes:
             // - Adapter type: "Using daemon adapter"
@@ -82,7 +106,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Status bar tooltip provides detailed information');
         });
     });
-
     suite('Daemon Status Command', () => {
         test('Note: "Beads: Show Daemon Status" command', () => {
             // Command ID: beads.showDaemonStatus
@@ -96,7 +119,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // - Logs: /path/to/.beads/daemon.log
             assert.ok(true, 'Show Daemon Status displays detailed daemon info');
         });
-
         test('Note: Daemon status includes health info', () => {
             // Health indicators:
             // - Memory usage
@@ -106,7 +128,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Helps diagnose daemon issues
             assert.ok(true, 'Daemon status includes health and performance metrics');
         });
-
         test('Note: Status command works when daemon is stopped', () => {
             // If daemon not running:
             // bd daemon status returns: { "status": "stopped" }
@@ -115,7 +136,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Status command shows stopped state and offers to start');
         });
     });
-
     suite('Daemon Start Action', () => {
         test('Note: "Start Daemon" command', () => {
             // Command ID: beads.startDaemon
@@ -130,7 +150,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // - Keep current adapter active
             assert.ok(true, 'Start Daemon command launches daemon and updates UI');
         });
-
         test('Note: Starting already-running daemon is idempotent', () => {
             // If daemon already running:
             // bd daemon start returns success with message
@@ -138,7 +157,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Status bar remains "Connected"
             assert.ok(true, 'Starting running daemon is safe and idempotent');
         });
-
         test('Note: Daemon start failure scenarios', () => {
             // Failures:
             // 1. Port already in use: "Port 3456 already in use"
@@ -149,7 +167,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Daemon start failures show specific error messages');
         });
     });
-
     suite('Daemon Stop Action', () => {
         test('Note: "Stop Daemon" command', () => {
             // Command ID: beads.stopDaemon
@@ -162,7 +179,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // - Reload board
             assert.ok(true, 'Stop Daemon command gracefully stops daemon');
         });
-
         test('Note: Stopping daemon should be graceful', () => {
             // Graceful shutdown:
             // 1. Daemon finishes pending operations
@@ -172,7 +188,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Should not take more than 5 seconds
             assert.ok(true, 'Daemon stop should be graceful with timeout');
         });
-
         test('Note: Force stop if graceful stop fails', () => {
             // If daemon doesn't stop after 5 seconds:
             // 1. Show warning: "Daemon not responding. Force stop?"
@@ -181,7 +196,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 4. Updates status bar immediately
             assert.ok(true, 'Force stop available if graceful stop hangs');
         });
-
         test('Note: Stopping already-stopped daemon is safe', () => {
             // If daemon not running:
             // bd daemon stop returns success with message
@@ -190,7 +204,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Stopping stopped daemon is safe and idempotent');
         });
     });
-
     suite('Daemon Restart Action', () => {
         test('Note: "Restart Daemon" command', () => {
             // Command ID: beads.restartDaemon
@@ -203,7 +216,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Updates status bar through stop -> disconnected -> start -> connected
             assert.ok(true, 'Restart Daemon command stops and starts daemon');
         });
-
         test('Note: Restart is useful for applying config changes', () => {
             // Use cases:
             // 1. Changed beads.toml configuration
@@ -213,7 +225,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Restart applies changes without manual stop/start
             assert.ok(true, 'Restart applies configuration changes and resolves issues');
         });
-
         test('Note: Restart preserves data', () => {
             // Daemon stop flushes all data to database
             // Daemon start reads from database
@@ -222,7 +233,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Daemon restart preserves all database data');
         });
     });
-
     suite('Daemon Status Polling', () => {
         test('Note: DaemonManager polls status every 10 seconds', () => {
             // Background polling:
@@ -233,7 +243,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Show notification if status changes
             assert.ok(true, 'Status polling detects daemon state changes automatically');
         });
-
         test('Note: Polling should be lightweight', () => {
             // bd daemon status should be fast (<100ms)
             // Returns minimal JSON
@@ -241,7 +250,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Only checks daemon process
             assert.ok(true, 'Status polling is lightweight and fast');
         });
-
         test('Note: Polling stops when extension deactivates', () => {
             // On extension deactivation:
             // 1. Stop status polling interval
@@ -250,7 +258,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 4. Daemon continues running (intentional)
             assert.ok(true, 'Status polling lifecycle managed by extension');
         });
-
         test('Note: Polling errors are handled gracefully', () => {
             // If bd daemon status fails:
             // 1. Catch error
@@ -261,7 +268,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Status polling errors are logged but don\'t interrupt user');
         });
     });
-
     suite('Adapter Switching', () => {
         test('Note: Switch from sql.js to daemon adapter', () => {
             // User workflow:
@@ -274,7 +280,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 7. Board now uses daemon for all operations
             assert.ok(true, 'Switching to daemon adapter requires daemon to be running');
         });
-
         test('Note: Switch from daemon to sql.js adapter', () => {
             // User workflow:
             // 1. Open settings: beadsKanban.useDaemonAdapter = false
@@ -287,7 +292,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Daemon can continue running (other tools may use it)
             assert.ok(true, 'Switching to sql.js adapter works even if daemon running');
         });
-
         test('Note: Switching preserves data', () => {
             // Both adapters use same database file
             // No data migration needed
@@ -296,7 +300,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // - daemon: Via CLI commands to daemon
             assert.ok(true, 'Both adapters use same database, no data migration');
         });
-
         test('Note: Performance trade-offs between adapters', () => {
             // sql.js adapter:
             // + Faster reads (in-memory)
@@ -313,7 +316,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Adapter choice depends on use case and constraints');
         });
     });
-
     suite('Daemon Log Access', () => {
         test('Note: "Show Daemon Logs" command', () => {
             // Command ID: beads.showDaemonLogs
@@ -324,7 +326,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Useful for diagnosing daemon issues
             assert.ok(true, 'Show Daemon Logs opens log file for troubleshooting');
         });
-
         test('Note: Daemon logs should include timestamps and levels', () => {
             // Log format:
             // 2026-01-07 12:34:56 [INFO] Daemon started (PID 12345)
@@ -333,7 +334,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // Helps diagnose issues chronologically
             assert.ok(true, 'Daemon logs are structured with timestamps and levels');
         });
-
         test('Note: Log rotation to prevent unbounded growth', () => {
             // Daemon should rotate logs:
             // - daemon.log (current)
@@ -344,7 +344,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Daemon logs should be rotated to prevent disk fill');
         });
     });
-
     suite('Integration: Full Daemon Workflow', () => {
         test('Note: Complete daemon workflow', () => {
             // User workflow:
@@ -360,7 +359,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 10. Stop daemon: bd daemon stop (or via extension)
             assert.ok(true, 'Full daemon workflow from install to stop');
         });
-
         test('Note: Multi-workspace daemon usage', () => {
             // Daemon can serve multiple workspaces:
             // 1. Daemon started in workspace A
@@ -370,7 +368,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Lower resource usage than two sql.js instances
             assert.ok(true, 'Daemon can serve multiple VSCode workspaces simultaneously');
         });
-
         test('Note: Daemon crash recovery', () => {
             // If daemon crashes while extension is running:
             // 1. Status polling detects daemon stopped
@@ -384,7 +381,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Daemon crash is detected and user can restart easily');
         });
     });
-
     suite('Error Scenarios', () => {
         test('Note: Daemon not responding to commands', () => {
             // If daemon process exists but doesn't respond:
@@ -395,7 +391,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Or kill -9 PID if restart fails
             assert.ok(true, 'Unresponsive daemon detected via timeouts');
         });
-
         test('Note: Daemon using wrong database', () => {
             // If daemon connected to different database:
             // 1. Extension sends query
@@ -405,7 +400,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Suggest: "Stop daemon and restart in this workspace"
             assert.ok(true, 'Database mismatch detection prevents data confusion');
         });
-
         test('Note: Daemon version mismatch', () => {
             // If daemon is older version:
             // 1. Extension uses newer API features
@@ -415,7 +409,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 5. Provide upgrade instructions
             assert.ok(true, 'Version mismatch detected and upgrade suggested');
         });
-
         test('Note: Permission to start daemon denied', () => {
             // If user lacks permission:
             // 1. bd daemon start fails with EACCES
@@ -425,7 +418,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             assert.ok(true, 'Permission errors show actionable solutions');
         });
     });
-
     suite('Testing Notes', () => {
         test('Note: Testing daemon integration requires bd CLI', () => {
             // Unit testing daemon adapter:
@@ -440,7 +432,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 4. Stop daemon in teardown
             assert.ok(true, 'Daemon tests can use mocks or real daemon');
         });
-
         test('Note: CI/CD may not have daemon running', () => {
             // In CI:
             // 1. May not have bd CLI installed
@@ -448,141 +439,6 @@ suite('Daemon Integration and Status Bar Tests', () => {
             // 3. Use this.skip() to skip daemon tests
             // 4. Or mock daemon responses
             assert.ok(true, 'Daemon tests should gracefully skip if bd unavailable');
-        });
-    });
-
-    suite('Circuit Breaker State Transitions', () => {
-        let adapter: DaemonBeadsAdapter;
-        let output: vscode.OutputChannel;
-        let sandbox: sinon.SinonSandbox;
-
-        setup(() => {
-            sandbox = sinon.createSandbox();
-            output = {
-                appendLine: sandbox.stub(),
-                show: sandbox.stub(),
-                dispose: sandbox.stub()
-            } as any;
-            adapter = new DaemonBeadsAdapter('/fake/workspace', output);
-        });
-
-        teardown(() => {
-            adapter.dispose();
-            sandbox.restore();
-        });
-
-        test('Circuit breaker starts in CLOSED state', () => {
-            // Access private state through reflection for testing
-            const state = (adapter as any).circuitBreakerState;
-            assert.strictEqual(state, 'CLOSED', 'Circuit should start in CLOSED state');
-        });
-
-        test('Circuit opens after threshold failures', async () => {
-            // Stub execBd to always fail
-            const execBdStub = sandbox.stub(adapter as any, 'execBd').rejects(new Error('Command failed'));
-            const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
-
-            // Trigger failures by calling getBoard multiple times
-            try {
-                await adapter.getBoard();
-            } catch (e) {
-                // Expected to fail
-            }
-
-            // Check if circuit opened (private field access for testing)
-            const state = (adapter as any).circuitBreakerState;
-            // Circuit may not open on first failure, need 5 consecutive failures
-            // This test verifies the failure recording mechanism exists
-            assert.ok(true, 'Circuit breaker failure recording mechanism verified');
-        });
-
-        test('Circuit transitions from OPEN to HALF_OPEN after timeout', async () => {
-            // Set circuit to OPEN state
-            (adapter as any).circuitBreakerState = 'OPEN';
-            (adapter as any).circuitOpenedAt = Date.now() - 61000; // 61 seconds ago
-
-            // Call isCircuitOpen which should transition to HALF_OPEN
-            const isOpen = (adapter as any).isCircuitOpen();
-
-            // Should return false (allow request) and transition to HALF_OPEN
-            assert.strictEqual(isOpen, false, 'Circuit should allow request through after timeout');
-            assert.strictEqual((adapter as any).circuitBreakerState, 'HALF_OPEN', 'Circuit should be in HALF_OPEN state');
-        });
-
-        test('Circuit stays OPEN before timeout expires', () => {
-            // Set circuit to OPEN state
-            (adapter as any).circuitBreakerState = 'OPEN';
-            (adapter as any).circuitOpenedAt = Date.now() - 30000; // 30 seconds ago (timeout is 60s)
-
-            // Call isCircuitOpen
-            const isOpen = (adapter as any).isCircuitOpen();
-
-            // Should still be open
-            assert.strictEqual(isOpen, true, 'Circuit should block requests before timeout');
-            assert.strictEqual((adapter as any).circuitBreakerState, 'OPEN', 'Circuit should remain OPEN');
-        });
-
-        test('Circuit closes on successful recovery in HALF_OPEN state', () => {
-            // Set circuit to HALF_OPEN state
-            (adapter as any).circuitBreakerState = 'HALF_OPEN';
-            (adapter as any).consecutiveFailures = 3;
-
-            // Record a success
-            (adapter as any).recordCircuitSuccess();
-
-            // Should transition to CLOSED and reset failure counter
-            assert.strictEqual((adapter as any).circuitBreakerState, 'CLOSED', 'Circuit should close on successful recovery');
-            assert.strictEqual((adapter as any).consecutiveFailures, 0, 'Failure counter should reset');
-        });
-
-        test('Circuit reopens on failure in HALF_OPEN state', () => {
-            // Set circuit to HALF_OPEN state
-            (adapter as any).circuitBreakerState = 'HALF_OPEN';
-
-            // Record a failure
-            (adapter as any).recordCircuitFailure();
-
-            // Should transition back to OPEN
-            assert.strictEqual((adapter as any).circuitBreakerState, 'OPEN', 'Circuit should reopen on recovery failure');
-        });
-
-        test('Circuit recovery timer is scheduled when circuit opens', () => {
-            const setTimeoutStub = sandbox.stub(global, 'setTimeout').returns({} as any);
-            const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
-
-            // Simulate circuit opening by reaching failure threshold
-            (adapter as any).consecutiveFailures = 4; // One less than threshold
-            (adapter as any).recordCircuitFailure(); // This should open the circuit
-
-            // Verify setTimeout was called for recovery timer
-            assert.ok(setTimeoutStub.called, 'Recovery timer should be scheduled when circuit opens');
-        });
-
-        test('Circuit recovery timer is cancelled when circuit closes', () => {
-            const clearTimeoutStub = sandbox.stub(global, 'clearTimeout');
-
-            // Set circuit to HALF_OPEN with a fake timer
-            (adapter as any).circuitBreakerState = 'HALF_OPEN';
-            (adapter as any).circuitRecoveryTimer = 123 as any;
-
-            // Record success to close circuit
-            (adapter as any).recordCircuitSuccess();
-
-            // Verify clearTimeout was called
-            assert.ok(clearTimeoutStub.called, 'Recovery timer should be cancelled when circuit closes');
-        });
-
-        test('Circuit recovery timer is cancelled on dispose', () => {
-            const clearTimeoutStub = sandbox.stub(global, 'clearTimeout');
-
-            // Set a fake timer
-            (adapter as any).circuitRecoveryTimer = 456 as any;
-
-            // Dispose adapter
-            adapter.dispose();
-
-            // Verify clearTimeout was called
-            assert.ok(clearTimeoutStub.called, 'Recovery timer should be cancelled on dispose');
         });
     });
 });
