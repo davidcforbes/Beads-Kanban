@@ -781,6 +781,32 @@ main {
     flex-shrink: 0;
 }
 
+.table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--pad);
+    border-top: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    flex-shrink: 0;
+}
+
+.table-pagination .pagination-info {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.table-pagination .pagination-btn {
+    margin-left: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.table-pagination .pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 /* Column dialog (for column selection) */
 .column-dialog {
     border: 1px solid var(--border);
@@ -846,4 +872,227 @@ main {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+/* ===== RESPONSIVE BREAKPOINTS ===== */
+
+/* Tablet/Medium screens (max-width: 1024px) */
+@media (max-width: 1024px) {
+    /* Reduce Kanban column min-width for better fit */
+    .column {
+        min-width: 180px;
+    }
+
+    /* Adjust dialog sizes */
+    #detailDialog {
+        width: 85vw;
+        max-width: 85vw;
+    }
+
+    .dialogForm {
+        min-width: auto;
+    }
+
+    .column-dialog {
+        min-width: 400px;
+    }
+
+    /* Hide less important table columns on medium screens */
+    .issues-table th:nth-child(7),  /* External Ref */
+    .issues-table td:nth-child(7) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(8),  /* Updated */
+    .issues-table td:nth-child(8) {
+        display: none;
+    }
+}
+
+/* Mobile/Small screens (max-width: 768px) */
+@media (max-width: 768px) {
+    /* Adjust topbar layout */
+    .topbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .filters {
+        flex-wrap: wrap;
+        margin-right: 0;
+    }
+
+    .search-input {
+        width: 100%;
+    }
+
+    /* Make dialogs full-screen on mobile */
+    #detailDialog {
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .dialogForm {
+        min-width: auto;
+        padding: 12px;
+    }
+
+    .column-dialog {
+        min-width: auto;
+        width: 95vw;
+    }
+
+    .column-dialog .dialog-body {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .column-dialog .dialog-controls {
+        flex-direction: row;
+        justify-content: center;
+    }
+
+    /* Reduce Kanban column padding and sizes */
+    .board {
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .column {
+        min-width: 160px;
+    }
+
+    .card {
+        padding: 8px;
+    }
+
+    .dropZone {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    /* Hide many table columns on mobile - show only essentials */
+    .issues-table th:nth-child(2),  /* Status */
+    .issues-table td:nth-child(2) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(5),  /* Type */
+    .issues-table td:nth-child(5) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(6),  /* Assignee */
+    .issues-table td:nth-child(6) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(7),  /* External Ref */
+    .issues-table td:nth-child(7) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(8),  /* Updated */
+    .issues-table td:nth-child(8) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(9),  /* Created */
+    .issues-table td:nth-child(9) {
+        display: none;
+    }
+
+    /* Keep visible: ID, Title, Priority */
+    .issues-table th,
+    .issues-table td {
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+
+    /* Adjust table pagination for mobile */
+    .table-pagination {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .table-pagination .pagination-btn {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Reduce padding throughout */
+    :root {
+        --pad: 8px;
+    }
+
+    /* Adjust metadata grid for mobile */
+    .detMeta {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Extra small screens (max-width: 480px) */
+@media (max-width: 480px) {
+    /* Further reduce Kanban column sizes */
+    .column {
+        min-width: 140px;
+    }
+
+    .columnHeader {
+        padding: 8px;
+        font-size: 13px;
+    }
+
+    .card {
+        padding: 6px;
+    }
+
+    .cardTitle {
+        font-size: 13px;
+    }
+
+    .badges {
+        font-size: 11px;
+    }
+
+    /* Stack action buttons vertically */
+    .actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .actions .btn,
+    .actions .select {
+        width: 100%;
+    }
+
+    /* Make table even more compact */
+    .issues-table th,
+    .issues-table td {
+        padding: 4px 6px;
+        font-size: 12px;
+    }
+
+    /* Adjust dialog actions to stack */
+    .dialogActions {
+        flex-direction: column;
+    }
+
+    .dialogActions .btn {
+        width: 100%;
+    }
+
+    .actionButtons {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .actionButtons .btn {
+        width: 100%;
+    }
 }

@@ -33,6 +33,19 @@ let columnState = {
 let boardData = null;
 let detailDirty = false;
 
+// Table view pagination state
+let tableState_paginationPage = 0;
+const tableState_rowsPerPage = 100; // Render 100 rows at a time
+
+// Debounce utility for performance optimization
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
 function requestDetailClose() {
     if (!detailDirty) {
         detDialog.close();
@@ -416,6 +429,9 @@ function render() {
         console.log('[Webview] render() aborted - no columns');
         return;
     }
+
+    // Reset table pagination when filters/sort changes (user likely wants to see results from page 1)
+    tableState_paginationPage = 0;
 
     if (viewMode === 'table') {
         renderTable();
@@ -867,6 +883,16 @@ function renderTable() {
             .filter(Boolean);
     }
 
+    // Apply pagination: calculate visible rows for current page
+    const totalRows = tableRows.length;
+    const totalPages = Math.ceil(totalRows / tableState_rowsPerPage);
+    const currentPage = Math.min(tableState_paginationPage, totalPages - 1);
+    const startIdx = currentPage * tableState_rowsPerPage;
+    const endIdx = Math.min(startIdx + tableState_rowsPerPage, totalRows);
+    const visibleRows = tableRows.slice(startIdx, endIdx);
+
+    console.log('[Webview] Pagination:', totalRows, 'total rows,', visibleRows.length, 'visible rows on page', currentPage + 1, 'of', totalPages);
+
     // Build table HTML
     let tableHtml = `
         <div class="table-view">
@@ -886,7 +912,8 @@ function renderTable() {
                     <tbody>
     `;
 
-    for (const card of tableRows) {
+    // Render only visible rows for current page
+    for (const card of visibleRows) {
         tableHtml += '<tr class="table-row" data-id="' + escapeHtml(card.id) + '">';
         for (const col of visibleColumns) {
             const cellContent = col.render(card);
@@ -903,6 +930,40 @@ function renderTable() {
     `;
 
     boardEl.innerHTML = tableHtml;
+
+    // Add pagination controls if there are multiple pages
+    if (totalPages > 1) {
+        const paginationDiv = document.createElement('div');
+        paginationDiv.className = 'table-pagination';
+        paginationDiv.innerHTML = `
+            <span class="pagination-info">Showing ${startIdx + 1}-${endIdx} of ${totalRows} rows (Page ${currentPage + 1} of ${totalPages})</span>
+            <button class="btn pagination-btn" id="tablePrevPage" ${currentPage === 0 ? 'disabled' : ''}>Previous</button>
+            <button class="btn pagination-btn" id="tableNextPage" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
+        `;
+        boardEl.appendChild(paginationDiv);
+
+        // Add pagination button handlers
+        const prevBtn = document.getElementById('tablePrevPage');
+        const nextBtn = document.getElementById('tableNextPage');
+        
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                if (tableState_paginationPage > 0) {
+                    tableState_paginationPage--;
+                    renderTable();
+                }
+            });
+        }
+        
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                if (tableState_paginationPage < totalPages - 1) {
+                    tableState_paginationPage++;
+                    renderTable();
+                }
+            });
+        }
+    }
 
     // Add loading indicator or partial load banner
     if (isLoading) {
@@ -1116,9 +1177,12 @@ newBtn.addEventListener("click", () => {
     openDetail(emptyCard);
 });
 
-filterPriority.addEventListener("change", render);
-filterType.addEventListener("change", render);
-filterSearch.addEventListener("input", render);
+// Create debounced render function for filter changes (300ms delay)
+const debouncedRender = debounce(render, 300);
+
+filterPriority.addEventListener("change", render); // Immediate for dropdown
+filterType.addEventListener("change", render); // Immediate for dropdown
+filterSearch.addEventListener("input", debouncedRender); // Debounced for text input
 
 window.addEventListener("message", (event) => {
     console.log('[Webview] Received message event:', event);

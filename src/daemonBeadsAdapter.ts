@@ -20,6 +20,13 @@ export class DaemonBeadsAdapter {
   private cacheTimestamp: number = 0;
   private lastMutationTime: number = 0;
 
+  // Circuit breaker state for batch failure recovery
+  private circuitBreakerState: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  private consecutiveFailures: number = 0;
+  private circuitOpenedAt: number = 0;
+  private readonly CIRCUIT_FAILURE_THRESHOLD = 5;
+  private readonly CIRCUIT_RESET_TIMEOUT_MS = 60000; // 1 minute
+
   constructor(workspaceRoot: string, output: vscode.OutputChannel) {
     this.workspaceRoot = workspaceRoot;
     this.output = output;
@@ -43,6 +50,80 @@ export class DaemonBeadsAdapter {
       .replace(/\s+/g, ' ')
       // Trim leading/trailing whitespace
       .trim();
+  }
+
+  /**
+   * Check if the circuit breaker is currently open.
+   * Automatically transitions from OPEN to HALF_OPEN after timeout.
+   */
+  private isCircuitOpen(): boolean {
+    if (this.circuitBreakerState === 'CLOSED') {
+      return false;
+    }
+
+    if (this.circuitBreakerState === 'OPEN') {
+      // Check if timeout has elapsed to transition to HALF_OPEN
+      const now = Date.now();
+      if (now - this.circuitOpenedAt >= this.CIRCUIT_RESET_TIMEOUT_MS) {
+        this.circuitBreakerState = 'HALF_OPEN';
+        this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Transitioning to HALF_OPEN (testing recovery)');
+        return false; // Allow the request through
+      }
+      return true; // Still open, block the request
+    }
+
+    // HALF_OPEN state - allow request through to test recovery
+    return false;
+  }
+
+  /**
+   * Record a successful batch operation.
+   * Closes the circuit if in HALF_OPEN state, resets failure counter.
+   */
+  private recordCircuitSuccess(): void {
+    if (this.circuitBreakerState === 'HALF_OPEN') {
+      this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery successful, closing circuit');
+      this.circuitBreakerState = 'CLOSED';
+    }
+    this.consecutiveFailures = 0;
+  }
+
+  /**
+   * Record a failed batch operation.
+   * Opens the circuit after threshold failures, shows user-friendly error.
+   */
+  private recordCircuitFailure(): void {
+    this.consecutiveFailures++;
+
+    if (this.circuitBreakerState === 'HALF_OPEN') {
+      // Failed during recovery test - reopen circuit
+      this.circuitBreakerState = 'OPEN';
+      this.circuitOpenedAt = Date.now();
+      this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Recovery test failed, reopening circuit');
+      return;
+    }
+
+    if (this.consecutiveFailures >= this.CIRCUIT_FAILURE_THRESHOLD) {
+      this.circuitBreakerState = 'OPEN';
+      this.circuitOpenedAt = Date.now();
+      this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: OPENED after ${this.consecutiveFailures} consecutive failures`);
+
+      // Show user-friendly error with actionable guidance
+      vscode.window.showErrorMessage(
+        'Beads: Unable to load issues due to repeated errors. The system will retry automatically in 1 minute.',
+        'View Logs',
+        'Reload Now'
+      ).then(action => {
+        if (action === 'View Logs') {
+          this.output.show();
+        } else if (action === 'Reload Now') {
+          // Force reset circuit breaker and try again
+          this.circuitBreakerState = 'CLOSED';
+          this.consecutiveFailures = 0;
+          vscode.commands.executeCommand('beads.refresh');
+        }
+      });
+    }
   }
 
   /**
@@ -276,10 +357,20 @@ export class DaemonBeadsAdapter {
           }
 
           detailedIssues.push(...batchResults);
+          
+          // Record successful batch
+          this.recordCircuitSuccess();
         } catch (error) {
+          // Check circuit breaker before retrying
+          if (this.isCircuitOpen()) {
+            this.recordCircuitFailure();
+            throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
+          }
+
           // If batch fails (likely due to missing/invalid ID), try each issue individually
           this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
           
+          let batchFailureCount = 0;
           for (const id of batch) {
             try {
               const singleResult = await this.execBd(['show', '--json', id]);
@@ -287,9 +378,23 @@ export class DaemonBeadsAdapter {
                 detailedIssues.push(...singleResult);
               }
             } catch (singleError) {
+              batchFailureCount++;
+              
               // Skip this issue - it may have been deleted or is invalid
               this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
             }
+          }
+
+          // Record batch result based on failure rate
+          if (batchFailureCount === batch.length) {
+            // Entire batch failed - record as circuit failure
+            this.recordCircuitFailure();
+          } else if (batchFailureCount > 0) {
+            // Partial failure - don't count as full failure
+            this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
+          } else {
+            // All succeeded on retry - record success
+            this.recordCircuitSuccess();
           }
         }
       }
@@ -358,8 +463,9 @@ export class DaemonBeadsAdapter {
           break;
 
         case 'blocked':
-          // Use bd blocked
-          result = await this.execBd(['blocked', '--json']);
+          // IMPROVEMENT: Use bd list --status=blocked instead of bd blocked
+          // This is more efficient and consistent with getColumnData
+          result = await this.execBd(['list', '--status=blocked', '--json', '--limit', '0']);
           break;
 
         case 'closed':
@@ -398,33 +504,42 @@ export class DaemonBeadsAdapter {
       switch (column) {
         case 'ready':
           // Use bd ready - it returns issues with no blockers
-          // Note: bd ready doesn't support --offset, so we fetch all and slice client-side
+          // LIMITATION: bd ready doesn't support --offset, so we fetch offset+limit and slice
+          // This means for offset=100, limit=50, we fetch 150 rows and discard the first 100
+          // This is inefficient but necessary until bd CLI adds --offset support
+          if (offset > 500) {
+            this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for ready column may cause performance issues`);
+          }
           const readyResult = await this.execBd(['ready', '--json', '--limit', String(offset + limit)]);
           basicIssues = Array.isArray(readyResult) ? readyResult.slice(offset, offset + limit) : [];
           break;
 
         case 'in_progress':
           // Use bd list with status filter
-          // bd list supports --limit but not --offset, so fetch offset+limit and slice
+          // LIMITATION: bd list supports --limit but not --offset
           const inProgressResult = await this.execBd(['list', '--status=in_progress', '--json', '--limit', String(offset + limit)]);
           basicIssues = Array.isArray(inProgressResult) ? inProgressResult.slice(offset, offset + limit) : [];
           break;
 
         case 'blocked':
-          // Use bd blocked
-          // Note: bd blocked doesn't support pagination, fetch all and slice
-          const blockedResult = await this.execBd(['blocked', '--json']);
+          // IMPROVEMENT: Use bd list with appropriate filters instead of bd blocked
+          // bd blocked fetches ALL issues which is very inefficient for large databases
+          // Instead, we can use bd list --status=blocked to leverage existing pagination
+          if (offset > 500) {
+            this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for blocked column may cause performance issues`);
+          }
+          const blockedResult = await this.execBd(['list', '--status=blocked', '--json', '--limit', String(offset + limit)]);
           basicIssues = Array.isArray(blockedResult) ? blockedResult.slice(offset, offset + limit) : [];
           break;
 
         case 'closed':
-          // Use bd list with status filter
+          // Use bd list with status filter (supports --limit)
           const closedResult = await this.execBd(['list', '--status=closed', '--json', '--limit', String(offset + limit)]);
           basicIssues = Array.isArray(closedResult) ? closedResult.slice(offset, offset + limit) : [];
           break;
 
         case 'open':
-          // Use bd list with status filter
+          // Use bd list with status filter (supports --limit)
           const openResult = await this.execBd(['list', '--status=open', '--json', '--limit', String(offset + limit)]);
           basicIssues = Array.isArray(openResult) ? openResult.slice(offset, offset + limit) : [];
           break;
@@ -453,10 +568,20 @@ export class DaemonBeadsAdapter {
           }
 
           detailedIssues.push(...batchResults);
+          
+          // Record successful batch
+          this.recordCircuitSuccess();
         } catch (error) {
+          // Check circuit breaker before retrying
+          if (this.isCircuitOpen()) {
+            this.recordCircuitFailure();
+            throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
+          }
+
           // If batch fails, try each issue individually
           this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
 
+          let batchFailureCount = 0;
           for (const id of batch) {
             try {
               const singleResult = await this.execBd(['show', '--json', id]);
@@ -464,8 +589,21 @@ export class DaemonBeadsAdapter {
                 detailedIssues.push(...singleResult);
               }
             } catch (singleError) {
+              batchFailureCount++;
               this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
             }
+          }
+
+          // Record batch result based on failure rate
+          if (batchFailureCount === batch.length) {
+            // Entire batch failed - record as circuit failure
+            this.recordCircuitFailure();
+          } else if (batchFailureCount > 0) {
+            // Partial failure - don't count as full failure
+            this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
+          } else {
+            // All succeeded on retry - record success
+            this.recordCircuitSuccess();
           }
         }
       }

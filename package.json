@@ -75,6 +75,11 @@
           "default": false,
           "description": "Automatically load more issues when scrolling near the bottom of a column. If false, users must click 'Load More' buttons."
         },
+        "beadsKanban.lazyLoadDependencies": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, dependencies (parent, children, blocked_by, blocks) are loaded on demand when viewing issue details. If false, all dependencies are loaded upfront (legacy behavior). Enabling this improves performance for large databases."
+        },
         "beadsKanban.issuePrefix": {
           "type": "string",
           "default": "",
