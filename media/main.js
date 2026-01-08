@@ -319,24 +319,30 @@ function requestId() {
 // Post with promise support
 function postAsync(type, payload) {
     showLoading();
-    let timeoutId;
+    const reqId = requestId();
     return new Promise((resolve, reject) => {
-        const reqId = requestId();
-        pendingRequests.set(reqId, { resolve, reject });
-        vscode.postMessage({ type, requestId: reqId, payload });
-        
         // Timeout after 30 seconds
-        timeoutId = setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             if (pendingRequests.has(reqId)) {
                 pendingRequests.delete(reqId);
                 // Don't call hideLoading here - let finally block handle it
                 reject(new Error('Request timeout'));
             }
         }, 30000);
+
+        // Store resolve, reject, AND timeoutId in the Map
+        // This allows response handlers to clear the timeout properly
+        pendingRequests.set(reqId, { resolve, reject, timeoutId });
+        vscode.postMessage({ type, requestId: reqId, payload });
     }).finally(() => {
-        // Clear timeout to prevent memory leak
-        if (timeoutId) {
-            clearTimeout(timeoutId);
+        // Cleanup: Clear the timeout if the request is still pending
+        // The response handlers will have already cleared it if they ran
+        if (pendingRequests.has(reqId)) {
+            const { timeoutId } = pendingRequests.get(reqId);
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+            pendingRequests.delete(reqId);
         }
         // Always call hideLoading exactly once per showLoading
         hideLoading();

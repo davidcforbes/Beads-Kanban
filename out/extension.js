@@ -40,41 +40,13 @@ const beadsAdapter_1 = require("./beadsAdapter");
 const daemonBeadsAdapter_1 = require("./daemonBeadsAdapter");
 const daemonManager_1 = require("./daemonManager");
 const webview_1 = require("./webview");
+const sanitizeError_1 = require("./sanitizeError");
 const types_1 = require("./types");
 // Size limits for text operations
 const MAX_CHAT_TEXT = 50_000; // 50KB reasonable for chat
 const MAX_CLIPBOARD_TEXT = 100_000; // 100KB for clipboard
 // Sanitize error messages to prevent leaking implementation details
-function sanitizeError(error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    // Remove file paths (C:\..., /home/..., \\..., etc.)
-    const sanitized = msg
-        .replace(/[A-Za-z]:\\[^\s]+/g, '[PATH]')
-        .replace(/\/[^\s]+\.(ts|js|tsx|jsx)/g, '[FILE]')
-        .replace(/\\[^\s]+\.(ts|js|tsx|jsx)/g, '[FILE]')
-        .replace(/\s+at\s+.*/g, ''); // Remove stack trace lines
-    // Provide specific error messages for common cases
-    if (sanitized.includes('ENOENT')) {
-        return 'Database file not found. Please ensure .beads directory exists.';
-    }
-    if (sanitized.includes('EACCES')) {
-        return 'Permission denied accessing database file.';
-    }
-    if (sanitized.includes('SQLITE_BUSY')) {
-        return 'Database is busy. Please try again.';
-    }
-    if (sanitized.includes('not connected') || sanitized.includes('Database not connected')) {
-        return 'Database connection lost. Please refresh the board.';
-    }
-    if (sanitized.includes('Invalid') || sanitized.includes('validation')) {
-        return sanitized.trim(); // Keep validation errors as they're user-friendly
-    }
-    // Return generic message only if truly empty or unrecognizable
-    if (sanitized.trim().length === 0) {
-        return 'An error occurred while processing your request.';
-    }
-    return sanitized.trim();
-}
+// sanitizeError is now imported from ./sanitizeError
 function activate(context) {
     const output = vscode.window.createOutputChannel("Beads Kanban");
     output.appendLine('[BeadsAdapter] Environment Versions: ' + JSON.stringify(process.versions, null, 2));
@@ -141,7 +113,7 @@ function activate(context) {
                             setTimeout(updateDaemonStatus, 1000); // Give daemon time to initialize
                         }
                         catch (startError) {
-                            output.appendLine(`[Extension] Failed to auto-start daemon: ${sanitizeError(startError)}`);
+                            output.appendLine(`[Extension] Failed to auto-start daemon: ${(0, sanitizeError_1.sanitizeErrorWithContext)(startError)}`);
                             // Show notification with option to start manually
                             vscode.window.showWarningMessage('Beads daemon is not running. The extension requires the daemon when configured to use DaemonBeadsAdapter.', 'Start Daemon', 'Disable Daemon Mode').then(action => {
                                 if (action === 'Start Daemon') {
@@ -157,7 +129,7 @@ function activate(context) {
             }
             catch (e) {
                 statusBarItem.text = "$(error) Beads Daemon";
-                statusBarItem.tooltip = `Error: ${sanitizeError(e)}`;
+                statusBarItem.tooltip = `Error: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`;
                 statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
             }
         };
@@ -252,7 +224,7 @@ function activate(context) {
                 }
             }
             catch (e) {
-                vscode.window.showErrorMessage(`Daemon action failed: ${sanitizeError(e)}`);
+                vscode.window.showErrorMessage(`Daemon action failed: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
             }
         }));
     }
@@ -274,6 +246,9 @@ function activate(context) {
             // Track disposal state and initial load
             let isDisposed = false;
             let initialLoadSent = false;
+            // Cancellation token for async operations to prevent posting after disposal
+            // This prevents the race condition between checking isDisposed and calling postMessage
+            const cancellationToken = { cancelled: false };
             // Track loaded ranges per column for incremental loading
             const loadedRanges = new Map();
             // Initialize with empty arrays for each column
@@ -290,7 +265,7 @@ function activate(context) {
                     panel.webview.postMessage(msg);
                 }
                 catch (e) {
-                    output.appendLine(`[Extension] Error posting message: ${sanitizeError(e)}`);
+                    output.appendLine(`[Extension] Error posting message: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
                     isDisposed = true; // Mark as disposed if posting fails
                 }
             };
@@ -348,7 +323,7 @@ function activate(context) {
                                 output.appendLine(`[Extension] Loaded ${cards.length}/${totalCount} cards for column ${column}`);
                             }
                             catch (columnError) {
-                                output.appendLine(`[Extension] Error loading column ${column}: ${sanitizeError(columnError)}`);
+                                output.appendLine(`[Extension] Error loading column ${column}: ${(0, sanitizeError_1.sanitizeErrorWithContext)(columnError)}`);
                                 // Initialize with empty data on error
                                 const emptyColumnData = {
                                     cards: [],
@@ -376,21 +351,34 @@ function activate(context) {
                         const data = await adapter.getBoard();
                         data.columnData = columnDataMap;
                         output.appendLine(`[Extension] Sending incremental board data with columnData`);
-                        post({ type: "board.data", requestId, payload: data });
+                        // Check cancellation before posting to prevent race with disposal
+                        if (!cancellationToken.cancelled) {
+                            post({ type: "board.data", requestId, payload: data });
+                        }
+                        else {
+                            output.appendLine(`[Extension] Skipped posting board.data - operation cancelled`);
+                        }
                     }
                     else {
                         // Fallback to legacy full load
                         output.appendLine(`[Extension] Adapter does not support incremental loading, using legacy getBoard()`);
                         const data = await adapter.getBoard();
                         output.appendLine(`[Extension] Got board data: ${data.cards.length} cards`);
-                        post({ type: "board.data", requestId, payload: data });
+                        // Check cancellation before posting to prevent race with disposal
+                        if (!cancellationToken.cancelled) {
+                            post({ type: "board.data", requestId, payload: data });
+                        }
+                        else {
+                            output.appendLine(`[Extension] Skipped posting board.data - operation cancelled`);
+                        }
                     }
                     output.appendLine(`[Extension] Posted board.data message`);
                 }
                 catch (e) {
-                    output.appendLine(`[Extension] Error in sendBoard: ${sanitizeError(e)}`);
-                    if (!isDisposed) {
-                        post({ type: "mutation.error", requestId, error: sanitizeError(e) });
+                    output.appendLine(`[Extension] Error in sendBoard: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
+                    // Check both disposal flag and cancellation token
+                    if (!isDisposed && !cancellationToken.cancelled) {
+                        post({ type: "mutation.error", requestId, error: (0, sanitizeError_1.sanitizeErrorWithContext)(e) });
                     }
                 }
             };
@@ -416,17 +404,23 @@ function activate(context) {
                     ranges.push({ offset, limit });
                     loadedRanges.set(column, ranges);
                     output.appendLine(`[Extension] Loaded ${cards.length} cards for column ${column} (${offset}-${offset + cards.length}/${totalCount})`);
-                    // Send response
-                    post({
-                        type: 'board.columnData',
-                        requestId,
-                        payload: { column, cards, offset, totalCount, hasMore }
-                    });
+                    // Send response - check cancellation before posting
+                    if (!cancellationToken.cancelled) {
+                        post({
+                            type: 'board.columnData',
+                            requestId,
+                            payload: { column, cards, offset, totalCount, hasMore }
+                        });
+                    }
+                    else {
+                        output.appendLine(`[Extension] Skipped posting board.columnData - operation cancelled`);
+                    }
                 }
                 catch (e) {
-                    output.appendLine(`[Extension] Error in handleLoadColumn: ${sanitizeError(e)}`);
-                    if (!isDisposed) {
-                        post({ type: "mutation.error", requestId, error: sanitizeError(e) });
+                    output.appendLine(`[Extension] Error in handleLoadColumn: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
+                    // Check both disposal flag and cancellation token
+                    if (!isDisposed && !cancellationToken.cancelled) {
+                        post({ type: "mutation.error", requestId, error: (0, sanitizeError_1.sanitizeErrorWithContext)(e) });
                     }
                 }
             };
@@ -440,7 +434,10 @@ function activate(context) {
                     // Validate the request
                     const validation = types_1.BoardLoadMoreSchema.safeParse({ column });
                     if (!validation.success) {
-                        post({ type: "mutation.error", requestId, error: `Invalid loadMore request: ${validation.error.message}` });
+                        // Check cancellation before posting error
+                        if (!cancellationToken.cancelled) {
+                            post({ type: "mutation.error", requestId, error: `Invalid loadMore request: ${validation.error.message}` });
+                        }
                         return;
                     }
                     // Calculate next offset from loadedRanges
@@ -453,9 +450,10 @@ function activate(context) {
                     await handleLoadColumn(requestId, column, nextOffset, pageSize);
                 }
                 catch (e) {
-                    output.appendLine(`[Extension] Error in handleLoadMore: ${sanitizeError(e)}`);
-                    if (!isDisposed) {
-                        post({ type: "mutation.error", requestId, error: sanitizeError(e) });
+                    output.appendLine(`[Extension] Error in handleLoadMore: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
+                    // Check both disposal flag and cancellation token
+                    if (!isDisposed && !cancellationToken.cancelled) {
+                        post({ type: "mutation.error", requestId, error: (0, sanitizeError_1.sanitizeErrorWithContext)(e) });
                     }
                 }
             };
@@ -622,7 +620,7 @@ function activate(context) {
                     post({
                         type: "mutation.error",
                         requestId: msg.requestId,
-                        error: sanitizeError(e)
+                        error: (0, sanitizeError_1.sanitizeErrorWithContext)(e)
                     });
                 }
             });
@@ -633,7 +631,7 @@ function activate(context) {
                 output.appendLine('[Extension] Webview HTML set successfully');
             }
             catch (e) {
-                output.appendLine(`[Extension] Error setting webview HTML: ${sanitizeError(e)}`);
+                output.appendLine(`[Extension] Error setting webview HTML: ${(0, sanitizeError_1.sanitizeErrorWithContext)(e)}`);
                 isDisposed = true;
                 return;
             }
@@ -658,11 +656,15 @@ function activate(context) {
                             sendBoard(requestId);
                         }
                         catch (error) {
+                            const errorMsg = `Failed to reload database: ${error instanceof Error ? error.message : String(error)}`;
+                            // Send error to webview
                             panel.webview.postMessage({
                                 type: "mutation.error",
                                 requestId: `fs-error-${Date.now()}`,
-                                error: `Failed to reload database: ${error instanceof Error ? error.message : String(error)}`
+                                error: errorMsg
                             });
+                            // Show warning to user so they know auto-refresh is broken
+                            vscode.window.showWarningMessage(`Beads auto-refresh failed: ${errorMsg}. Use the Refresh button to try again.`);
                         }
                         refreshTimeout = null;
                     }, 300);
@@ -673,6 +675,8 @@ function activate(context) {
                 panel.onDidDispose(() => {
                     output.appendLine('[Extension] Panel disposed');
                     isDisposed = true;
+                    // Cancel all pending async operations to prevent posting after disposal
+                    cancellationToken.cancelled = true;
                     // Try to send cleanup message to webview before disposal
                     try {
                         panel.webview.postMessage({ type: 'webview.cleanup' });
@@ -710,8 +714,8 @@ function activate(context) {
             }, 500);
         }
         catch (error) {
-            output.appendLine(`[Extension] Error in openBoard command: ${sanitizeError(error)}`);
-            vscode.window.showErrorMessage(`Failed to open Beads Kanban: ${sanitizeError(error)}`);
+            output.appendLine(`[Extension] Error in openBoard command: ${(0, sanitizeError_1.sanitizeErrorWithContext)(error)}`);
+            vscode.window.showErrorMessage(`Failed to open Beads Kanban: ${(0, sanitizeError_1.sanitizeErrorWithContext)(error)}`);
         }
     });
     context.subscriptions.push(openCmd);

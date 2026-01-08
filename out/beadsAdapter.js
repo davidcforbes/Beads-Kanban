@@ -42,21 +42,8 @@ const fs_1 = require("fs");
 const path = __importStar(require("path"));
 const sql_js_1 = __importDefault(require("sql.js"));
 const vscode = __importStar(require("vscode"));
-// Sanitize error messages to prevent leaking implementation details
-function sanitizeError(error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    // Remove file paths (C:\..., /home/..., \\..., etc.)
-    const sanitized = msg
-        .replace(/[A-Za-z]:\\[^\s]+/g, '[PATH]')
-        .replace(/\/[^\s]+\.(ts|js|tsx|jsx|db|sqlite|sqlite3)/g, '[FILE]')
-        .replace(/\\[^\s]+\.(ts|js|tsx|jsx|db|sqlite|sqlite3)/g, '[FILE]')
-        .replace(/\s+at\s+.*/g, ''); // Remove stack trace lines
-    // Return a generic message if nothing is left or if it looks like system errors
-    if (sanitized.trim().length === 0 || sanitized.includes('ENOENT') || sanitized.includes('EACCES')) {
-        return 'An error occurred while processing your request.';
-    }
-    return sanitized.trim();
-}
+const sanitizeError_1 = require("./sanitizeError");
+// sanitizeError is now imported from ./sanitizeError
 class BeadsAdapter {
     output;
     db = null;
@@ -313,14 +300,20 @@ class BeadsAdapter {
         }
     }
     /**
-     * Check if we recently saved the file ourselves (within last 2 seconds)
-     * This helps avoid reloading our own writes
+     * Check if we recently saved the file ourselves (within last 3 seconds)
+     * or if a save is currently in progress.
+     * This helps avoid reloading our own writes and prevents race conditions.
      */
     isRecentSelfSave() {
+        // If currently saving, definitely consider it a recent self save
+        if (this.isSaving) {
+            return true;
+        }
+        // Check if we saved within the last 3 seconds
         if (this.lastSaveTime === 0)
             return false;
         const timeSinceLastSave = Date.now() - this.lastSaveTime;
-        return timeSinceLastSave < 2000; // 2 second window
+        return timeSinceLastSave < 3000; // 3 second window (increased from 2s to prevent edge cases)
     }
     /**
      * Reload the database from disk.
@@ -428,8 +421,8 @@ class BeadsAdapter {
         LEFT JOIN blocked_issues bi ON bi.id = i.id
         WHERE i.deleted_at IS NULL
         ORDER BY i.priority ASC, i.updated_at DESC, i.created_at DESC
-        LIMIT ${maxIssues + 1};
-      `);
+        LIMIT ?;
+      `, [maxIssues + 1]);
         // Check if we hit the pagination limit
         const hasMoreIssues = issues.length > maxIssues;
         if (hasMoreIssues) {
@@ -458,55 +451,64 @@ class BeadsAdapter {
                 arr.push(r.label);
                 labelsByIssue.set(r.issue_id, arr);
             }
-            // Fetch all relevant dependencies where either side is in our issue list
-            // Note: We might miss titles if the "other side" isn't in 'ids' (filtered list?).
-            // Actually, 'issues' query above fetches ALL issues (no WHERE clause except deleted_at IS NULL).
-            // So 'ids' should check all.
-            const allDeps = this.queryAll(`
-        SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
-               d.created_at, d.created_by, d.metadata, d.thread_id
-        FROM dependencies d
-        JOIN issues i1 ON i1.id = d.issue_id
-        JOIN issues i2 ON i2.id = d.depends_on_id
-        WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
-      `, [...ids, ...ids]);
-            for (const d of allDeps) {
-                const child = {
-                    id: d.issue_id,
-                    title: d.issue_title,
-                    created_at: d.created_at,
-                    created_by: d.created_by,
-                    metadata: d.metadata,
-                    thread_id: d.thread_id
-                };
-                const parent = {
-                    id: d.depends_on_id,
-                    title: d.depends_title,
-                    created_at: d.created_at,
-                    created_by: d.created_by,
-                    metadata: d.metadata,
-                    thread_id: d.thread_id
-                };
-                if (d.type === 'parent-child') {
-                    // issue_id is child, depends_on_id is parent
-                    parentMap.set(d.issue_id, parent);
-                    const list = childrenMap.get(d.depends_on_id) ?? [];
-                    list.push(child);
-                    childrenMap.set(d.depends_on_id, list);
-                }
-                else if (d.type === 'blocks') {
-                    // issue_id is BLOCKED BY depends_on_id
-                    const blockedByList = blockedByMap.get(d.issue_id) ?? [];
-                    blockedByList.push(parent); // parent here is just the blocker (depends_on_id)
-                    blockedByMap.set(d.issue_id, blockedByList);
-                    const blocksList = blocksMap.get(d.depends_on_id) ?? [];
-                    blocksList.push(child); // child here is the blocked one (issue_id)
-                    blocksMap.set(d.depends_on_id, blocksList);
+            // Conditionally fetch dependencies based on configuration
+            const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
+            if (!lazyLoadDependencies) {
+                // Eager load all dependencies (legacy behavior)
+                // Fetch all relevant dependencies where either side is in our issue list
+                // Note: We might miss titles if the "other side" isn't in 'ids' (filtered list?).
+                // Actually, 'issues' query above fetches ALL issues (no WHERE clause except deleted_at IS NULL).
+                // So 'ids' should check all.
+                const allDeps = this.queryAll(`
+          SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+                 d.created_at, d.created_by, d.metadata, d.thread_id
+          FROM dependencies d
+          JOIN issues i1 ON i1.id = d.issue_id
+          JOIN issues i2 ON i2.id = d.depends_on_id
+          WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
+        `, [...ids, ...ids]);
+                for (const d of allDeps) {
+                    const child = {
+                        id: d.issue_id,
+                        title: d.issue_title,
+                        created_at: d.created_at,
+                        created_by: d.created_by,
+                        metadata: d.metadata,
+                        thread_id: d.thread_id
+                    };
+                    const parent = {
+                        id: d.depends_on_id,
+                        title: d.depends_title,
+                        created_at: d.created_at,
+                        created_by: d.created_by,
+                        metadata: d.metadata,
+                        thread_id: d.thread_id
+                    };
+                    if (d.type === 'parent-child') {
+                        // issue_id is child, depends_on_id is parent
+                        parentMap.set(d.issue_id, parent);
+                        const list = childrenMap.get(d.depends_on_id) ?? [];
+                        list.push(child);
+                        childrenMap.set(d.depends_on_id, list);
+                    }
+                    else if (d.type === 'blocks') {
+                        // issue_id is BLOCKED BY depends_on_id
+                        const blockedByList = blockedByMap.get(d.issue_id) ?? [];
+                        blockedByList.push(parent); // parent here is just the blocker (depends_on_id)
+                        blockedByMap.set(d.issue_id, blockedByList);
+                        const blocksList = blocksMap.get(d.depends_on_id) ?? [];
+                        blocksList.push(child); // child here is the blocked one (issue_id)
+                        blocksMap.set(d.depends_on_id, blocksList);
+                    }
                 }
             }
+            // else: dependencies are lazy-loaded on demand (see getIssueDependencies method)
             // Comments are lazy-loaded on demand (see getIssueComments method)
-            // This significantly improves performance when loading large boards
+            // Dependencies can also be lazy-loaded if beadsKanban.lazyLoadDependencies is enabled (default: true)
+            // This significantly improves performance when loading large boards with many dependencies
         }
+        // Check if dependencies should be lazy-loaded
+        const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
         const cards = issues.map((r) => ({
             id: r.id,
             title: r.title,
@@ -547,10 +549,11 @@ class BeadsAdapter {
             await_id: r.await_id,
             timeout_ns: r.timeout_ns,
             waiters: r.waiters,
-            parent: parentMap.get(r.id),
-            children: childrenMap.get(r.id),
-            blocked_by: blockedByMap.get(r.id),
-            blocks: blocksMap.get(r.id),
+            // Dependencies: lazy-loaded if enabled (default), eagerly loaded if disabled
+            parent: lazyLoadDependencies ? undefined : parentMap.get(r.id),
+            children: lazyLoadDependencies ? undefined : childrenMap.get(r.id),
+            blocked_by: lazyLoadDependencies ? undefined : blockedByMap.get(r.id),
+            blocks: lazyLoadDependencies ? undefined : blocksMap.get(r.id),
             comments: [] // Comments are lazy-loaded on demand
         }));
         const columns = [
@@ -581,6 +584,73 @@ class BeadsAdapter {
       ORDER BY created_at ASC;
     `, [issueId]);
         return comments;
+    }
+    /**
+     * Get dependencies for a specific issue (lazy-loaded on demand).
+     * This method is called when the user opens the detail dialog for an issue.
+     * Returns parent, children, blocked_by, and blocks relationships.
+     */
+    async getIssueDependencies(issueId) {
+        if (!this.db)
+            await this.ensureConnected();
+        if (!this.db)
+            throw new Error('Failed to connect to database');
+        const allDeps = this.queryAll(`
+      SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+             d.created_at, d.created_by, d.metadata, d.thread_id
+      FROM dependencies d
+      JOIN issues i1 ON i1.id = d.issue_id
+      JOIN issues i2 ON i2.id = d.depends_on_id
+      WHERE d.issue_id = ? OR d.depends_on_id = ?;
+    `, [issueId, issueId]);
+        let parent;
+        const children = [];
+        const blocked_by = [];
+        const blocks = [];
+        for (const d of allDeps) {
+            const child = {
+                id: d.issue_id,
+                title: d.issue_title,
+                created_at: d.created_at,
+                created_by: d.created_by,
+                metadata: d.metadata,
+                thread_id: d.thread_id
+            };
+            const parentInfo = {
+                id: d.depends_on_id,
+                title: d.depends_title,
+                created_at: d.created_at,
+                created_by: d.created_by,
+                metadata: d.metadata,
+                thread_id: d.thread_id
+            };
+            if (d.type === 'parent-child') {
+                if (d.issue_id === issueId) {
+                    // This issue is the child, depends_on_id is the parent
+                    parent = parentInfo;
+                }
+                else {
+                    // This issue is the parent, issue_id is the child
+                    children.push(child);
+                }
+            }
+            else if (d.type === 'blocks') {
+                if (d.issue_id === issueId) {
+                    // This issue is blocked by depends_on_id
+                    blocked_by.push(parentInfo);
+                }
+                else {
+                    // This issue blocks issue_id
+                    blocks.push(child);
+                }
+            }
+        }
+        return {
+            parent: parent,
+            children: children.length > 0 ? children : undefined,
+            blocked_by: blocked_by.length > 0 ? blocked_by : undefined,
+            blocks: blocks.length > 0 ? blocks : undefined
+        };
     }
     /**
      * Get the count of issues in a specific column.
@@ -688,6 +758,8 @@ class BeadsAdapter {
             default:
                 throw new Error(`Unknown column: ${column}`);
         }
+        // Add pagination parameters to params array
+        params.push(limit, offset);
         // Build the main query (same structure as getBoard)
         const issues = this.queryAll(`
       SELECT
@@ -734,7 +806,7 @@ class BeadsAdapter {
       LEFT JOIN blocked_issues bi ON bi.id = i.id
       WHERE ${whereClause}
       ORDER BY i.priority ASC, i.updated_at DESC, i.created_at DESC
-      LIMIT ${limit} OFFSET ${offset};
+      LIMIT ? OFFSET ?;
     `, params);
         if (issues.length === 0) {
             return [];
@@ -760,48 +832,55 @@ class BeadsAdapter {
                 arr.push(r.label);
                 labelsByIssue.set(r.issue_id, arr);
             }
-            // Fetch dependencies
-            const allDeps = this.queryAll(`
-        SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
-               d.created_at, d.created_by, d.metadata, d.thread_id
-        FROM dependencies d
-        JOIN issues i1 ON i1.id = d.issue_id
-        JOIN issues i2 ON i2.id = d.depends_on_id
-        WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
-      `, [...ids, ...ids]);
-            for (const d of allDeps) {
-                const child = {
-                    id: d.issue_id,
-                    title: d.issue_title,
-                    created_at: d.created_at,
-                    created_by: d.created_by,
-                    metadata: d.metadata,
-                    thread_id: d.thread_id
-                };
-                const parent = {
-                    id: d.depends_on_id,
-                    title: d.depends_title,
-                    created_at: d.created_at,
-                    created_by: d.created_by,
-                    metadata: d.metadata,
-                    thread_id: d.thread_id
-                };
-                if (d.type === 'parent-child') {
-                    parentMap.set(d.issue_id, parent);
-                    const list = childrenMap.get(d.depends_on_id) ?? [];
-                    list.push(child);
-                    childrenMap.set(d.depends_on_id, list);
-                }
-                else if (d.type === 'blocks') {
-                    const blockedByList = blockedByMap.get(d.issue_id) ?? [];
-                    blockedByList.push(parent);
-                    blockedByMap.set(d.issue_id, blockedByList);
-                    const blocksList = blocksMap.get(d.depends_on_id) ?? [];
-                    blocksList.push(child);
-                    blocksMap.set(d.depends_on_id, blocksList);
+            // Conditionally fetch dependencies based on configuration
+            const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
+            if (!lazyLoadDependencies) {
+                // Fetch dependencies
+                const allDeps = this.queryAll(`
+          SELECT d.issue_id, d.depends_on_id, d.type, i1.title as issue_title, i2.title as depends_title,
+                 d.created_at, d.created_by, d.metadata, d.thread_id
+          FROM dependencies d
+          JOIN issues i1 ON i1.id = d.issue_id
+          JOIN issues i2 ON i2.id = d.depends_on_id
+          WHERE (d.issue_id IN (${placeholders}) OR d.depends_on_id IN (${placeholders}));
+        `, [...ids, ...ids]);
+                for (const d of allDeps) {
+                    const child = {
+                        id: d.issue_id,
+                        title: d.issue_title,
+                        created_at: d.created_at,
+                        created_by: d.created_by,
+                        metadata: d.metadata,
+                        thread_id: d.thread_id
+                    };
+                    const parent = {
+                        id: d.depends_on_id,
+                        title: d.depends_title,
+                        created_at: d.created_at,
+                        created_by: d.created_by,
+                        metadata: d.metadata,
+                        thread_id: d.thread_id
+                    };
+                    if (d.type === 'parent-child') {
+                        parentMap.set(d.issue_id, parent);
+                        const list = childrenMap.get(d.depends_on_id) ?? [];
+                        list.push(child);
+                        childrenMap.set(d.depends_on_id, list);
+                    }
+                    else if (d.type === 'blocks') {
+                        const blockedByList = blockedByMap.get(d.issue_id) ?? [];
+                        blockedByList.push(parent);
+                        blockedByMap.set(d.issue_id, blockedByList);
+                        const blocksList = blocksMap.get(d.depends_on_id) ?? [];
+                        blocksList.push(child);
+                        blocksMap.set(d.depends_on_id, blocksList);
+                    }
                 }
             }
+            // else: dependencies are lazy-loaded on demand (see getIssueDependencies method)
         }
+        // Check if dependencies should be lazy-loaded (reuse the same config value)
+        const lazyLoadDependencies = vscode.workspace.getConfiguration('beadsKanban').get('lazyLoadDependencies', true);
         // Map to BoardCard format (same as getBoard)
         const cards = issues.map((r) => ({
             id: r.id,
@@ -843,10 +922,11 @@ class BeadsAdapter {
             await_id: r.await_id,
             timeout_ns: r.timeout_ns,
             waiters: r.waiters,
-            parent: parentMap.get(r.id),
-            children: childrenMap.get(r.id),
-            blocked_by: blockedByMap.get(r.id),
-            blocks: blocksMap.get(r.id),
+            // Dependencies: lazy-loaded if enabled (default), eagerly loaded if disabled
+            parent: lazyLoadDependencies ? undefined : parentMap.get(r.id),
+            children: lazyLoadDependencies ? undefined : childrenMap.get(r.id),
+            blocked_by: lazyLoadDependencies ? undefined : blockedByMap.get(r.id),
+            blocks: lazyLoadDependencies ? undefined : blocksMap.get(r.id),
             comments: [] // Comments are lazy-loaded on demand
         }));
         return cards;
@@ -1035,52 +1115,27 @@ class BeadsAdapter {
             // Atomic write: write to temp file then rename
             const tmpPath = this.dbPath + '.tmp';
             fs.writeFileSync(tmpPath, buffer);
-            // Retry rename operation with exponential backoff (handles Windows file locks)
-            const maxRetries = 5;
-            let lastError = null;
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    fs.renameSync(tmpPath, this.dbPath);
-                    lastError = null;
-                    break; // Success!
-                }
-                catch (error) {
-                    lastError = error;
-                    // Only retry on EPERM/EBUSY errors (file locked)
-                    if (error instanceof Error &&
-                        (error.message.includes('EPERM') || error.message.includes('EBUSY'))) {
-                        if (attempt < maxRetries - 1) {
-                            // Exponential backoff: 10ms, 20ms, 40ms, 80ms
-                            const delayMs = 10 * Math.pow(2, attempt);
-                            this.output.appendLine(`[BeadsAdapter] Rename failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delayMs}ms: ${error.message}`);
-                            // Synchronous sleep for simplicity
-                            const start = Date.now();
-                            while (Date.now() - start < delayMs) {
-                                // Busy wait (not ideal but simple for short delays)
-                            }
-                        }
-                        else {
-                            this.output.appendLine(`[BeadsAdapter] Rename failed after ${maxRetries} attempts: ${error.message}`);
-                        }
-                    }
-                    else {
-                        // Non-lock error, don't retry
-                        throw error;
-                    }
-                }
+            // Rename temp file to final path
+            // On Windows file lock errors (EPERM/EBUSY), we fail fast and let scheduleSave retry naturally
+            try {
+                fs.renameSync(tmpPath, this.dbPath);
             }
-            // If we exhausted retries, throw the last error
-            if (lastError) {
-                // Clean up temp file
+            catch (error) {
+                // Clean up temp file on failure
                 try {
                     if (fs.existsSync(tmpPath)) {
                         fs.unlinkSync(tmpPath);
                     }
                 }
-                catch (e) {
+                catch (cleanupError) {
                     // Ignore cleanup errors
                 }
-                throw lastError;
+                // Log and re-throw
+                if (error instanceof Error &&
+                    (error.message.includes('EPERM') || error.message.includes('EBUSY'))) {
+                    this.output.appendLine(`[BeadsAdapter] Rename failed (file locked): ${error.message}. Will retry via scheduleSave.`);
+                }
+                throw error;
             }
             // Update mtime tracking
             try {
@@ -1096,7 +1151,7 @@ class BeadsAdapter {
             const msg = `Failed to save database: ${error instanceof Error ? error.message : String(error)}`;
             this.output.appendLine(`[BeadsAdapter] ERROR: ${msg}`);
             // Show user-visible error (sanitized)
-            vscode.window.showErrorMessage(`Beads Kanban: ${sanitizeError(error)}`);
+            vscode.window.showErrorMessage(`Beads Kanban: ${(0, sanitizeError_1.sanitizeError)(error)}`);
             // Re-throw to prevent silent data loss
             throw new Error(msg);
         }

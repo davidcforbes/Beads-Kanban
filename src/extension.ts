@@ -3,6 +3,7 @@ import { BeadsAdapter } from "./beadsAdapter";
 import { DaemonBeadsAdapter } from "./daemonBeadsAdapter";
 import { DaemonManager } from "./daemonManager";
 import { getWebviewHtml } from "./webview";
+import { sanitizeErrorWithContext as sanitizeError } from "./sanitizeError";
 import {
   BoardData,
   BoardCard,
@@ -47,40 +48,7 @@ const MAX_CHAT_TEXT = 50_000; // 50KB reasonable for chat
 const MAX_CLIPBOARD_TEXT = 100_000; // 100KB for clipboard
 
 // Sanitize error messages to prevent leaking implementation details
-function sanitizeError(error: unknown): string {
-  const msg = error instanceof Error ? error.message : String(error);
-  
-  // Remove file paths (C:\..., /home/..., \\..., etc.)
-  const sanitized = msg
-    .replace(/[A-Za-z]:\\[^\s]+/g, '[PATH]')
-    .replace(/\/[^\s]+\.(ts|js|tsx|jsx)/g, '[FILE]')
-    .replace(/\\[^\s]+\.(ts|js|tsx|jsx)/g, '[FILE]')
-    .replace(/\s+at\s+.*/g, ''); // Remove stack trace lines
-  
-  // Provide specific error messages for common cases
-  if (sanitized.includes('ENOENT')) {
-    return 'Database file not found. Please ensure .beads directory exists.';
-  }
-  if (sanitized.includes('EACCES')) {
-    return 'Permission denied accessing database file.';
-  }
-  if (sanitized.includes('SQLITE_BUSY')) {
-    return 'Database is busy. Please try again.';
-  }
-  if (sanitized.includes('not connected') || sanitized.includes('Database not connected')) {
-    return 'Database connection lost. Please refresh the board.';
-  }
-  if (sanitized.includes('Invalid') || sanitized.includes('validation')) {
-    return sanitized.trim(); // Keep validation errors as they're user-friendly
-  }
-  
-  // Return generic message only if truly empty or unrecognizable
-  if (sanitized.trim().length === 0) {
-    return 'An error occurred while processing your request.';
-  }
-  
-  return sanitized.trim();
-}
+// sanitizeError is now imported from ./sanitizeError
 
 export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel("Beads Kanban");
@@ -303,6 +271,10 @@ export function activate(context: vscode.ExtensionContext) {
     let isDisposed = false;
     let initialLoadSent = false;
 
+    // Cancellation token for async operations to prevent posting after disposal
+    // This prevents the race condition between checking isDisposed and calling postMessage
+    const cancellationToken = { cancelled: false };
+
     // Track loaded ranges per column for incremental loading
     const loadedRanges = new Map<BoardColumnKey, Array<{ offset: number; limit: number }>>();
     // Initialize with empty arrays for each column
@@ -418,19 +390,30 @@ export function activate(context: vscode.ExtensionContext) {
           data.columnData = columnDataMap;
 
           output.appendLine(`[Extension] Sending incremental board data with columnData`);
-          post({ type: "board.data", requestId, payload: data });
+          // Check cancellation before posting to prevent race with disposal
+          if (!cancellationToken.cancelled) {
+            post({ type: "board.data", requestId, payload: data });
+          } else {
+            output.appendLine(`[Extension] Skipped posting board.data - operation cancelled`);
+          }
         } else {
           // Fallback to legacy full load
           output.appendLine(`[Extension] Adapter does not support incremental loading, using legacy getBoard()`);
           const data = await adapter.getBoard();
           output.appendLine(`[Extension] Got board data: ${data.cards.length} cards`);
-          post({ type: "board.data", requestId, payload: data });
+          // Check cancellation before posting to prevent race with disposal
+          if (!cancellationToken.cancelled) {
+            post({ type: "board.data", requestId, payload: data });
+          } else {
+            output.appendLine(`[Extension] Skipped posting board.data - operation cancelled`);
+          }
         }
 
         output.appendLine(`[Extension] Posted board.data message`);
       } catch (e) {
         output.appendLine(`[Extension] Error in sendBoard: ${sanitizeError(e)}`);
-        if (!isDisposed) {
+        // Check both disposal flag and cancellation token
+        if (!isDisposed && !cancellationToken.cancelled) {
           post({ type: "mutation.error", requestId, error: sanitizeError(e) });
         }
       }
@@ -463,15 +446,20 @@ export function activate(context: vscode.ExtensionContext) {
 
         output.appendLine(`[Extension] Loaded ${cards.length} cards for column ${column} (${offset}-${offset + cards.length}/${totalCount})`);
 
-        // Send response
-        post({
-          type: 'board.columnData',
-          requestId,
-          payload: { column, cards, offset, totalCount, hasMore }
-        });
+        // Send response - check cancellation before posting
+        if (!cancellationToken.cancelled) {
+          post({
+            type: 'board.columnData',
+            requestId,
+            payload: { column, cards, offset, totalCount, hasMore }
+          });
+        } else {
+          output.appendLine(`[Extension] Skipped posting board.columnData - operation cancelled`);
+        }
       } catch (e) {
         output.appendLine(`[Extension] Error in handleLoadColumn: ${sanitizeError(e)}`);
-        if (!isDisposed) {
+        // Check both disposal flag and cancellation token
+        if (!isDisposed && !cancellationToken.cancelled) {
           post({ type: "mutation.error", requestId, error: sanitizeError(e) });
         }
       }
@@ -483,12 +471,15 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       output.appendLine(`[Extension] handleLoadMore: column=${column}`);
-      
+
       try {
         // Validate the request
         const validation = BoardLoadMoreSchema.safeParse({ column });
         if (!validation.success) {
-          post({ type: "mutation.error", requestId, error: `Invalid loadMore request: ${validation.error.message}` });
+          // Check cancellation before posting error
+          if (!cancellationToken.cancelled) {
+            post({ type: "mutation.error", requestId, error: `Invalid loadMore request: ${validation.error.message}` });
+          }
           return;
         }
 
@@ -505,7 +496,8 @@ export function activate(context: vscode.ExtensionContext) {
         await handleLoadColumn(requestId, column, nextOffset, pageSize);
       } catch (e) {
         output.appendLine(`[Extension] Error in handleLoadMore: ${sanitizeError(e)}`);
-        if (!isDisposed) {
+        // Check both disposal flag and cancellation token
+        if (!isDisposed && !cancellationToken.cancelled) {
           post({ type: "mutation.error", requestId, error: sanitizeError(e) });
         }
       }
@@ -749,17 +741,20 @@ export function activate(context: vscode.ExtensionContext) {
       panel.onDidDispose(() => {
         output.appendLine('[Extension] Panel disposed');
         isDisposed = true;
-        
+
+        // Cancel all pending async operations to prevent posting after disposal
+        cancellationToken.cancelled = true;
+
         // Try to send cleanup message to webview before disposal
         try {
           panel.webview.postMessage({ type: 'webview.cleanup' });
         } catch (e) {
           // Webview already disposed, ignore
         }
-        
+
         // Clear loaded ranges tracking
         loadedRanges.clear();
-        
+
         if (refreshTimeout) {
           clearTimeout(refreshTimeout);
         }

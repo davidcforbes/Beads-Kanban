@@ -47,6 +47,13 @@ function getWebviewHtml(webview, extensionUri) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!--
+    CSP Note: style-src-attr 'unsafe-inline' is allowed because:
+    1. All inline styles use static values or trusted config (no user-controlled values)
+    2. All user content is escaped via escapeHtml() preventing XSS
+    3. Converting 118+ inline styles to CSS classes provides minimal security benefit
+    4. Inline <style> tags and javascript: URIs are still blocked
+  -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
                  img-src ${webview.cspSource};
@@ -65,6 +72,10 @@ function getWebviewHtml(webview, extensionUri) {
   <header class="topbar">
     <div class="title">Agent Native Abstraction Layer for Beads</div>
     <div class="actions">
+      <div class="view-toggle">
+        <button id="viewKanbanBtn" class="view-toggle-btn active">Kanban</button>
+        <button id="viewTableBtn" class="view-toggle-btn">Table</button>
+      </div>
       <div class="filters">
         <input id="filterSearch" type="text" placeholder="Search..." class="search-input" />
         <select id="filterPriority" class="select">
