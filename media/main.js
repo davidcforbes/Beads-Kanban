@@ -667,7 +667,7 @@ function renderKanban() {
         }
 
         // Add loading spinner if column is loading
-        const colState = columnState[col.key];
+        // colState already declared at line 536
         if (colState && colState.loading) {
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'column-loading';
