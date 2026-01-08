@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a VS Code extension that provides a Kanban board interface for issues stored in a `.beads` SQLite database. It supports two data adapters:
 - sql.js adapter: loads the SQLite DB into memory and writes changes back to disk.
 - Daemon adapter: uses the `bd` CLI/daemon for reads and mutations.
+The board uses incremental, column-based loading to keep large databases responsive.
 
 ## Development Commands
 
@@ -40,7 +41,7 @@ Extension Host (TypeScript/Node.js)
 - `src/webview.ts` - Generates webview HTML with CSP and asset URIs
 
 Webview (JavaScript/HTML/CSS)
-- `media/main.js` - UI logic; Sortable drag-and-drop, filters, detail dialog, and request/response messaging
+- `media/main.js` - UI logic; Sortable drag-and-drop, filters, detail dialog, incremental column loading, and request/response messaging
 - `media/styles.css` - Theme-aware styling
 - `media/Sortable.min.js` - Drag-and-drop library
 - `media/marked.min.js` - Markdown rendering
@@ -52,6 +53,8 @@ The extension uses a request/response pattern for webview-extension communicatio
 
 WebMsg types (Webview -> Extension)
 - `board.load` / `board.refresh` - Request board data
+- `board.loadColumn` - Fetch a slice of a column (offset/limit)
+- `board.loadMore` - Load the next page for a column
 - `issue.create` - Create new issue
 - `issue.move` - Drag-and-drop status change
 - `issue.update` - Update issue fields
@@ -62,7 +65,8 @@ WebMsg types (Webview -> Extension)
 - `issue.copyToClipboard` - Copy issue context
 
 ExtMsg types (Extension -> Webview)
-- `board.data` - Board data payload
+- `board.data` - Board data payload (may include columnData for incremental loading)
+- `board.columnData` - Column slice payload for incremental loading
 - `mutation.ok` - Success response
 - `mutation.error` - Error response with message
 - `webview.cleanup` - Cleanup before panel disposal
@@ -98,11 +102,13 @@ sql.js adapter
 - Uses batched queries for labels/dependencies/comments
 - Debounced save (300ms) with atomic write
 - Tracks file mtime and reloads on external changes
+- Supports column-based incremental loading via `getColumnData` / `getColumnCount`
 
 daemon adapter
-- Uses `bd list --json` for basic data, then `bd show --json` for details
+- Uses column-based `bd` queries for incremental loading and `bd show --json` for details
 - Uses `bd` for mutations (create/update/move/comments/labels/deps)
 - Short-lived cache to reduce CLI overhead
+- Exposes `getColumnData` / `getColumnCount` for incremental loading paths
 
 ### Input Validation
 
@@ -110,6 +116,72 @@ All mutation messages from the webview are validated with Zod (`src/types.ts`):
 - `IssueCreateSchema` / `IssueUpdateSchema`
 - `CommentAddSchema` / `LabelSchema` / `DependencySchema`
 - `IssueIdSchema` enforces length bounds; issue IDs are treated as opaque strings, not necessarily UUIDs
+
+### Incremental Loading Architecture
+
+The extension uses column-based incremental loading to support large databases (10,000+ issues) without performance degradation.
+
+**Problem:** Loading all issues at once causes:
+- Slow initial load (200+ sequential CLI calls for daemon adapter)
+- High memory usage (all issues in memory)
+- Slow rendering (thousands of DOM nodes)
+
+**Solution:** Column-based lazy loading:
+1. **Initial Load**: Load only visible columns (Ready, In Progress, Blocked) with limited items per column
+2. **Lazy Load**: Load Closed column and additional pages only when needed
+3. **Pagination**: Load in configurable chunks (default: 100 initial, 50 per page)
+
+**Configuration Settings:**
+- `beadsKanban.initialLoadLimit` (default: 100, range: 10-1000) - Issues per column on initial load
+- `beadsKanban.pageSize` (default: 50, range: 10-500) - Issues to load when clicking Load More
+- `beadsKanban.preloadClosedColumn` (default: false) - Whether to load closed issues initially
+- `beadsKanban.autoLoadOnScroll` (default: false) - Auto-load more issues on scroll (future feature)
+- `beadsKanban.maxIssues` (DEPRECATED) - Use initialLoadLimit and pageSize instead
+
+**Message Protocol for Incremental Loading:**
+
+New request types:
+- `board.loadColumn(column, offset, limit)` - Load specific column chunk
+- `board.loadMore(column)` - Load next page for a column
+
+Enhanced response:
+- `board.data` now includes `columnData` field with per-column metadata (cards, offset, totalCount, hasMore)
+- `board.columnData` response for incremental loads
+
+**Frontend State:**
+- Column-based state management (`columnState` per column)
+- Tracks loaded ranges, total counts, and hasMore flags
+- Load More buttons appear when hasMore is true
+- Column headers show "loaded / total" counts
+
+**Backend Support:**
+Both adapters implement:
+- `getColumnData(column, offset, limit)` - Paginated column queries
+- `getColumnCount(column)` - Fast count queries
+
+**Backward Compatibility:**
+- Old `board.load` still works (loads full board up to maxIssues limit)
+- Legacy `maxIssues` setting still respected
+- Flat `cards` array included in responses for compatibility
+
+**Migration Guide:**
+If you have a custom `maxIssues` setting:
+1. Set `initialLoadLimit` to your preferred initial load size (default: 100)
+2. Set `pageSize` to your preferred page size (default: 50)
+3. Remove or ignore `maxIssues` (will be removed in future version)
+
+Example: If you had `maxIssues: 500`, use:
+```json
+{
+  "beadsKanban.initialLoadLimit": 200,
+  "beadsKanban.pageSize": 100,
+  "beadsKanban.preloadClosedColumn": true
+}
+```
+
+### Planned UI Consolidation
+
+The Create New Issue and Edit Issue forms will be consolidated into a single shared form unit to ensure identical fields, validation, and features across both workflows.
 
 ## Important Notes
 
