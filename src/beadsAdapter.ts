@@ -1321,6 +1321,7 @@ export class BeadsAdapter {
     ephemeral?: boolean;
     parent_id?: string;
     blocked_by_ids?: string[];
+    children_ids?: string[];
   }): Promise<{ id: string }> {
     // Wait for any ongoing reload to complete
     await this.waitForReloadComplete();
@@ -1380,6 +1381,13 @@ export class BeadsAdapter {
     if (input.blocked_by_ids && input.blocked_by_ids.length > 0) {
       for (const blockerId of input.blocked_by_ids) {
         this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'blocks')`, [id, blockerId]);
+      }
+    }
+
+    // Insert children (set parent on each child)
+    if (input.children_ids && input.children_ids.length > 0) {
+      for (const childId of input.children_ids) {
+        this.runQuery(`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES (?, ?, 'parent-child')`, [childId, id]);
       }
     }
 

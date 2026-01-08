@@ -992,6 +992,7 @@ export class DaemonBeadsAdapter {
     ephemeral?: boolean;
     parent_id?: string;
     blocked_by_ids?: string[];
+    children_ids?: string[];
   }): Promise<{ id: string }> {
     const title = (input.title ?? '').trim();
     if (!title) {
@@ -1066,6 +1067,19 @@ export class DaemonBeadsAdapter {
       if (updateArgs.length > 0) {
         await this.execBd(['update', issueId, ...updateArgs]);
         this.trackMutation();
+      }
+
+      // Set children (add parent-child relationship from child side)
+      if (input.children_ids && input.children_ids.length > 0) {
+        for (const childId of input.children_ids) {
+          try {
+            await this.execBd(['dep', 'add', childId, issueId, '--type', 'parent-child']);
+            this.trackMutation();
+          } catch (childErr) {
+            this.output.appendLine(`[DaemonBeadsAdapter] WARNING: Failed to set parent on child ${childId}: ${childErr}`);
+            // Don't fail the whole operation if a child link fails
+          }
+        }
       }
 
       return { id: issueId };

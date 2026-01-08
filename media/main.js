@@ -1457,10 +1457,17 @@ function openDetail(card) {
                           ${(card.children && card.children.length > 0) ? `
                             <ul style="margin: 0; padding-left: 16px; font-size: 11px; margin-bottom: 4px;">
                               ${card.children.map(c => `
-                                  <li>${formatDep(c)}</li>
+                                  <li>
+                                      ${formatDep(c)}
+                                      <span class="remove-child" data-id="${escapeHtml(c.id)}" style="cursor: pointer; color: var(--error); margin-left: 4px;">&times;</span>
+                                  </li>
                               `).join('')}
                             </ul>
-                          ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted);">None</div>'}
+                          ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px;">None</div>'}
+                          <div style="display: flex; gap: 4px;">
+                                <input id="newChildId" type="text" placeholder="Child Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                                <button id="btnAddChild" class="btn" style="padding: 2px 8px;">Add</button>
+                          </div>
     `;
     
     form.innerHTML = `
@@ -1705,7 +1712,7 @@ function openDetail(card) {
             ephemeral: document.getElementById("editEphemeral").checked
         };
         
-        // In create mode, include labels, parent, and blockers
+        // In create mode, include labels, parent, blockers, and children
         if (isCreateMode) {
             if (card.labels && card.labels.length > 0) {
                 data.labels = card.labels;
@@ -1715,6 +1722,9 @@ function openDetail(card) {
             }
             if (card.blocked_by && card.blocked_by.length > 0) {
                 data.blocked_by_ids = card.blocked_by.map(b => b.id);
+            }
+            if (card.children && card.children.length > 0) {
+                data.children_ids = card.children.map(c => c.id);
             }
         }
 
@@ -2067,6 +2077,63 @@ function openDetail(card) {
                     } catch (err) {
                         console.error("Remove blocker failed:", err);
                         toast(`Failed to remove blocker: ${err.message}`);
+                    }
+                }
+            };
+        });
+
+        const btnAddChild = form.querySelector("#btnAddChild");
+        if (btnAddChild) {
+            btnAddChild.onclick = async (e) => {
+                e.preventDefault();
+                const childId = form.querySelector("#newChildId").value.trim();
+                if (!childId) return;
+                
+                if (isCreateMode) {
+                    // In create mode, add to local array
+                    if (!card.children) card.children = [];
+                    if (!card.children.find(c => c.id === childId)) {
+                        card.children.push({ id: childId, title: childId });
+                        form.querySelector("#newChildId").value = "";
+                        toast("Child added (will be applied on save)");
+                        refreshStructureSection();
+                    } else {
+                        toast("Child already added");
+                    }
+                } else {
+                    // In edit mode, call API
+                    // Note: To add a child from the parent side, we set the parent on the child
+                    try {
+                        await postAsync("issue.addDependency", { id: childId, otherId: card.id, type: 'parent-child' });
+                        toast("Child added");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Add child failed:", err);
+                        toast(`Failed to add child: ${err.message}`);
+                    }
+                }
+            };
+        }
+
+        form.querySelectorAll(".remove-child").forEach(btn => {
+            btn.onclick = async (e) => {
+                const childId = e.target.dataset.id;
+                
+                if (isCreateMode) {
+                    // In create mode, remove from local array
+                    card.children = (card.children || []).filter(c => c.id !== childId);
+                    toast("Child removed");
+                    refreshStructureSection();
+                } else {
+                    // In edit mode, call API
+                    // To remove a child, we remove the parent relationship from the child
+                    try {
+                        await postAsync("issue.removeDependency", { id: childId, otherId: card.id, type: 'parent-child' });
+                        toast("Child removed");
+                        await refreshRelationshipsFromBoard();
+                    } catch (err) {
+                        console.error("Remove child failed:", err);
+                        toast(`Failed to remove child: ${err.message}`);
                     }
                 }
             };

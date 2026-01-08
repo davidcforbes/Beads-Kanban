@@ -187,7 +187,8 @@ export const IssueCreateSchema = z.object({
   is_template: z.boolean().optional(),
   ephemeral: z.boolean().optional(),
   parent_id: z.string().max(100).optional(),
-  blocked_by_ids: z.array(z.string().max(100)).optional()
+  blocked_by_ids: z.array(z.string().max(100)).optional(),
+  children_ids: z.array(z.string().max(100)).optional()
 });
 
 export const SetStatusSchema = z.object({
