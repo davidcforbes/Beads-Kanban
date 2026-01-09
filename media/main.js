@@ -1512,6 +1512,14 @@ window.addEventListener("message", (event) => {
         
         const cards = msg.payload.cards || [];
         
+        // Initialize columns with default kanban columns
+        columns = [
+            { key: "ready", title: "Ready" },
+            { key: "in_progress", title: "In Progress" },
+            { key: "blocked", title: "Blocked" },
+            { key: "closed", title: "Closed" }
+        ];
+        
         // Phase 2: Populate cardCache with all MinimalCard data
         cardCache.clear();
         cardStateLevel.clear();
