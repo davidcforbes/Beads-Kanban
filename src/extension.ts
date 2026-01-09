@@ -330,7 +330,24 @@ export function activate(context: vscode.ExtensionContext) {
       output.appendLine(`[Extension] sendBoard called with requestId: ${requestId}`);
       initialLoadSent = true; // Mark that we've sent board data
       try {
-        // Read configuration settings for incremental loading
+        // Phase 1-3: Prefer fast minimal loading if available
+        const supportsFastLoading = typeof (adapter as any).getBoardMinimal === 'function';
+        
+        if (supportsFastLoading) {
+          output.appendLine(`[Extension] Using fast loading path (getBoardMinimal)`);
+          const cards = await (adapter as any).getBoardMinimal();
+          output.appendLine(`[Extension] Loaded ${cards.length} minimal cards for refresh`);
+          
+          // Check cancellation before posting
+          if (!cancellationToken.cancelled) {
+            post({ type: "board.minimal", requestId, payload: { cards } });
+          } else {
+            output.appendLine(`[Extension] Skipped posting board.minimal - operation cancelled`);
+          }
+          return;
+        }
+
+        // Fallback: Read configuration settings for incremental loading
         const config = vscode.workspace.getConfiguration('beadsKanban');
         const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
         const preloadClosedColumn = config.get<boolean>('preloadClosedColumn', false);
