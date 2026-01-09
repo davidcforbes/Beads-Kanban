@@ -1810,17 +1810,11 @@ async function openDetail(card) {
     // Helper to safe string
     const safe = (s) => escapeHtml(s || "");
 
-    // Helper to format dependency with metadata
+    // Helper to format dependency: last 20 chars of ID + ": " + Title
     const formatDep = (dep) => {
-        let result = escapeHtml(dep.title);
-        const meta = [];
-        if (dep.created_at) meta.push(`Created: ${new Date(dep.created_at).toLocaleString()}`);
-        if (dep.created_by) meta.push(`By: ${escapeHtml(dep.created_by)}`);
-        if (dep.thread_id) meta.push(`Thread: ${escapeHtml(dep.thread_id)}`);
-        if (meta.length > 0) {
-            result += ` <span style="font-size: 10px; color: var(--muted); font-style: italic;">(${meta.join(', ')})</span>`;
-        }
-        return result;
+        const idSuffix = dep.id ? dep.id.slice(-20) : '';
+        const title = dep.title || '';
+        return `${escapeHtml(idSuffix)}: ${escapeHtml(title)}`;
     };
 
     const statusOptions = [
@@ -2098,10 +2092,10 @@ async function openDetail(card) {
                      <button type="button" id="btnCopy" class="btn icon-btn" title="Copy Context">📋 Copy</button>
                 </div>
             </div>
-            <div style="font-size: 10px; color: var(--muted); text-align: right; margin-top: 8px; line-height: 1.5;">
-               ID: ${isCreateMode ? 'Assigned on create' : escapeHtml(card.id)}<br>
-               Created: ${isCreateMode ? 'Not yet created' : new Date(card.created_at).toLocaleString()}<br>
-               Updated: ${isCreateMode ? 'Not yet created' : new Date(card.updated_at).toLocaleString()}${!isCreateMode && card.closed_at ? `<br>Closed: ${new Date(card.closed_at).toLocaleString()}` : ''}
+            <div style="font-size: 10px; color: var(--muted); text-align: right; margin-top: 8px; display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
+               <span>ID: ${isCreateMode ? 'Assigned on create' : escapeHtml(card.id)}</span>
+               <span>Created: ${isCreateMode ? 'Not yet created' : new Date(card.created_at).toLocaleString()}</span>
+               <span>Updated: ${isCreateMode ? 'Not yet created' : new Date(card.updated_at).toLocaleString()}</span>${!isCreateMode && card.closed_at ? `<span>Closed: ${new Date(card.closed_at).toLocaleString()}</span>` : ''}
             </div>
         </div>
     `;

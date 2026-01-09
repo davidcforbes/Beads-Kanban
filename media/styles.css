@@ -251,6 +251,17 @@ body {
     display: none;
 }
 
+/* Structure section constraints */
+#structureSection {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+#structureSection input[list] {
+    max-width: 100%;
+}
+
 .status-option {
     display: flex;
     align-items: center;
