@@ -2483,7 +2483,25 @@ async function openDetail(card) {
                 e.preventDefault();
                 const parentId = form.querySelector("#newParentId").value.trim();
                 if (!parentId) return;
-                
+
+                // Validate: prevent self-reference
+                if (parentId === card.id) {
+                    toast("Error: An issue cannot be its own parent");
+                    return;
+                }
+
+                // Validate: check if parent issue exists
+                if (!cardCache.has(parentId)) {
+                    toast(`Error: Parent issue '${parentId}' does not exist`);
+                    return;
+                }
+
+                // Validate: check if parent is already set
+                if (card.parent && card.parent.id === parentId) {
+                    toast("This parent is already set");
+                    return;
+                }
+
                 if (isCreateMode) {
                     // In create mode, store parent locally
                     card.parent = { id: parentId, title: parentId }; // We'll display just the ID
@@ -2532,7 +2550,19 @@ async function openDetail(card) {
                 e.preventDefault();
                 const blockerId = form.querySelector("#newBlockerId").value.trim();
                 if (!blockerId) return;
-                
+
+                // Validate: prevent self-reference
+                if (blockerId === card.id) {
+                    toast("Error: An issue cannot block itself");
+                    return;
+                }
+
+                // Validate: check if blocker issue exists
+                if (!cardCache.has(blockerId)) {
+                    toast(`Error: Blocker issue '${blockerId}' does not exist`);
+                    return;
+                }
+
                 if (isCreateMode) {
                     // In create mode, add to local array
                     if (!card.blocked_by) card.blocked_by = [];
@@ -2545,6 +2575,12 @@ async function openDetail(card) {
                         toast("Blocker already added");
                     }
                 } else {
+                    // Validate: check if blocker already exists in edit mode
+                    if (card.blocked_by && card.blocked_by.find(b => b.id === blockerId)) {
+                        toast("This blocker is already added");
+                        return;
+                    }
+
                     // In edit mode, call API
                     try {
                         await postAsync("issue.addDependency", { id: card.id, otherId: blockerId, type: 'blocks' }, "Adding blocker...");
@@ -2587,7 +2623,19 @@ async function openDetail(card) {
                 e.preventDefault();
                 const childId = form.querySelector("#newChildId").value.trim();
                 if (!childId) return;
-                
+
+                // Validate: prevent self-reference
+                if (childId === card.id) {
+                    toast("Error: An issue cannot be its own child");
+                    return;
+                }
+
+                // Validate: check if child issue exists
+                if (!cardCache.has(childId)) {
+                    toast(`Error: Child issue '${childId}' does not exist`);
+                    return;
+                }
+
                 if (isCreateMode) {
                     // In create mode, add to local array
                     if (!card.children) card.children = [];
@@ -2600,6 +2648,12 @@ async function openDetail(card) {
                         toast("Child already added");
                     }
                 } else {
+                    // Validate: check if child already exists in edit mode
+                    if (card.children && card.children.find(c => c.id === childId)) {
+                        toast("This child is already added");
+                        return;
+                    }
+
                     // In edit mode, call API
                     // Note: To add a child from the parent side, we set the parent on the child
                     try {
