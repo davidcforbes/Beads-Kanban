@@ -2401,8 +2401,9 @@ async function openDetail(card) {
     async function refreshRelationshipsFromBoard() {
         if (!card.id) return;
         try {
-            const refreshed = await postAsync("board.refresh", {}, "Refreshing board...");
-            const updated = refreshed?.cards?.find((c) => c.id === card.id);
+            // Use issue.getFull to get the complete card with relationships
+            const response = await postAsync("issue.getFull", { id: card.id }, "Refreshing relationships...");
+            const updated = response?.payload?.card;
             if (updated) {
                 card.parent = updated.parent;
                 card.children = updated.children;
