@@ -50,6 +50,7 @@ function getWebviewHtml(webview, extensionUri) {
     const isMac = process.platform === 'darwin';
     const modKey = isMac ? '⌘' : 'Ctrl';
     return `<!DOCTYPE html>
+<!-- Forced No-Quirks Mode -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">

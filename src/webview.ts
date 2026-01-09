@@ -19,6 +19,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   const modKey = isMac ? '⌘' : 'Ctrl';
 
   return `<!DOCTYPE html>
+<!-- Forced No-Quirks Mode -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
