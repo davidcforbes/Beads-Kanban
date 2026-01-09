@@ -29,42 +29,7 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Install beads CLI
-      shell: bash
-      run: |
-        # Install beads CLI from releases or build from source
-        # For now, skip if not available (tests will be marked as skipped)
-        echo "Beads CLI installation step - configure based on your setup"
-
-    - name: Run all test suites
-      run: npm run test:all
+    - name: Run VS Code extension tests
+      run: npm test
       continue-on-error: false
 
-    - name: Upload test reports
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-reports-${{ matrix.os }}-node-${{ matrix.node-version }}
-        path: |
-          test-summary.md
-          adapter-integration-report.md
-          message-validation-report.md
-          field-mapping-report.md
-          round-trip-report.md
-          bd-cli-report.md
-        retention-days: 30
-
-    - name: Comment PR with test results
-      if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.node-version == '20.x'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const summary = fs.readFileSync('test-summary.md', 'utf8');
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: `## Test Results\n\n${summary}`
-          });

@@ -41,6 +41,25 @@ beads.right.meta.json
 .Archive/
 .vscode-test/
 node_modules/
+out/
+
+# Build artifacts and packages
+*.vsix
+dist/
+
+# Test reports and generated files
+*-report.md
+test-summary.md
+benchmark-results/
+test-databases/
+
+# IDE and editor files
+.serena/
+*.code-workspace
+.vscode/*.log
+
+# Generated dependencies (copied by build script)
+media/purify.min.js
 
 # Archive directory for obsolete documentation
 .Archive/
