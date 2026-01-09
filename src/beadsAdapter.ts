@@ -642,6 +642,33 @@ export class BeadsAdapter {
   }
 
   /**
+   * Get board metadata (columns only) without loading any cards.
+   * Used for incremental loading to avoid fetching all issues.
+   */
+  public async getBoardMetadata(): Promise<BoardData> {
+    // Ensure database connection but don't load any issues
+    if (!this.db) await this.ensureConnected();
+    if (!this.db) throw new Error('Failed to connect to database');
+
+    // Check if database file was modified externally
+    const fileChanged = await this.hasFileChangedExternally();
+    if (fileChanged && !this.isRecentSelfSave()) {
+      this.output.appendLine('[BeadsAdapter] External database change detected, reloading from disk');
+      await this.reloadFromDisk();
+    }
+
+    const columns: BoardColumn[] = [
+      { key: "ready", title: "Ready" },
+      { key: "in_progress", title: "In Progress" },
+      { key: "blocked", title: "Blocked" },
+      { key: "closed", title: "Closed" }
+    ];
+
+    // Return only columns, no cards - cards will be loaded via getColumnData
+    return { columns, cards: [] };
+  }
+
+  /**
    * Get comments for a specific issue (lazy-loaded on demand).
    * This method is called when the user opens the detail dialog for an issue.
    */

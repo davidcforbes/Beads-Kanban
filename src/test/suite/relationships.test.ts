@@ -25,7 +25,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addLabel(issue.id, 'bug');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.ok(card.labels.includes('bug'), 'Issue should have bug label');
@@ -48,7 +48,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addLabel(issue.id, 'frontend');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.strictEqual(card.labels.length, 3, 'Issue should have 3 labels');
@@ -73,14 +73,14 @@ suite('Relationships and Metadata Tests', () => {
 
                 // Verify labels added
                 let board = await adapter.getBoard();
-                let card = board.cards.find(c => c.id === issue.id);
+                let card = (board.cards || []).find(c => c.id === issue.id);
                 assert.strictEqual(card?.labels.length, 2, 'Should have 2 labels initially');
 
                 // Remove one label
                 await adapter.removeLabel(issue.id, 'urgent');
 
                 board = await adapter.getBoard();
-                card = board.cards.find(c => c.id === issue.id);
+                card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.strictEqual(card.labels.length, 1, 'Should have 1 label after removal');
@@ -107,7 +107,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.removeLabel(issue.id, 'urgent');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.strictEqual(card.labels.length, 0, 'Should have no labels');
@@ -128,7 +128,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addLabel(issue.id, specialLabel);
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.ok(card.labels.includes(specialLabel), 'Should support labels with colons');
@@ -149,7 +149,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addLabel(issue.id, 'bug');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 // Depending on implementation, may have 1 or 2 instances
@@ -175,8 +175,8 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addDependency(child.id, parent.id, 'parent-child');
 
                 const board = await adapter.getBoard();
-                const childCard = board.cards.find(c => c.id === child.id);
-                const parentCard = board.cards.find(c => c.id === parent.id);
+                const childCard = (board.cards || []).find(c => c.id === child.id);
+                const parentCard = (board.cards || []).find(c => c.id === parent.id);
 
                 assert.ok(childCard, 'Child should exist');
                 assert.ok(parentCard, 'Parent should exist');
@@ -208,7 +208,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addDependency(child2.id, parent.id, 'parent-child');
 
                 const board = await adapter.getBoard();
-                const parentCard = board.cards.find(c => c.id === parent.id);
+                const parentCard = (board.cards || []).find(c => c.id === parent.id);
 
                 assert.ok(parentCard, 'Parent should exist');
                 assert.ok(parentCard.children, 'Parent should have children array');
@@ -232,15 +232,15 @@ suite('Relationships and Metadata Tests', () => {
 
                 // Verify dependency added
                 let board = await adapter.getBoard();
-                let childCard = board.cards.find(c => c.id === child.id);
+                let childCard = (board.cards || []).find(c => c.id === child.id);
                 assert.ok(childCard?.parent, 'Child should have parent initially');
 
                 // Remove dependency
                 await adapter.removeDependency(child.id, parent.id);
 
                 board = await adapter.getBoard();
-                childCard = board.cards.find(c => c.id === child.id);
-                const parentCard = board.cards.find(c => c.id === parent.id);
+                childCard = (board.cards || []).find(c => c.id === child.id);
+                const parentCard = (board.cards || []).find(c => c.id === parent.id);
 
                 assert.ok(!childCard?.parent, 'Child should not have parent after removal');
                 assert.ok(!parentCard?.children || parentCard.children.length === 0, 'Parent should have no children');
@@ -264,8 +264,8 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addDependency(blocked.id, blocker.id, 'blocks');
 
                 const board = await adapter.getBoard();
-                const blockedCard = board.cards.find(c => c.id === blocked.id);
-                const blockerCard = board.cards.find(c => c.id === blocker.id);
+                const blockedCard = (board.cards || []).find(c => c.id === blocked.id);
+                const blockerCard = (board.cards || []).find(c => c.id === blocker.id);
 
                 assert.ok(blockedCard, 'Blocked issue should exist');
                 assert.ok(blockerCard, 'Blocker issue should exist');
@@ -297,7 +297,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addDependency(blocked.id, blocker2.id, 'blocks');
 
                 const board = await adapter.getBoard();
-                const blockedCard = board.cards.find(c => c.id === blocked.id);
+                const blockedCard = (board.cards || []).find(c => c.id === blocked.id);
 
                 assert.ok(blockedCard, 'Blocked issue should exist');
                 assert.ok(blockedCard.blocked_by, 'Should have blockedBy array');
@@ -321,14 +321,14 @@ suite('Relationships and Metadata Tests', () => {
 
                 // Verify dependency added
                 let board = await adapter.getBoard();
-                let blockedCard = board.cards.find(c => c.id === blocked.id);
+                let blockedCard = (board.cards || []).find(c => c.id === blocked.id);
                 assert.ok(blockedCard?.blocked_by && blockedCard.blocked_by.length > 0, 'Should have blocker initially');
 
                 // Remove dependency
                 await adapter.removeDependency(blocked.id, blocker.id);
 
                 board = await adapter.getBoard();
-                blockedCard = board.cards.find(c => c.id === blocked.id);
+                blockedCard = (board.cards || []).find(c => c.id === blocked.id);
 
                 assert.ok(!blockedCard?.blocked_by || blockedCard.blocked_by.length === 0, 'Should have no blockers after removal');
             } catch (err) {
@@ -349,7 +349,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addComment(issue.id, 'This is a test comment', 'TestUser');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.ok(card.comments && card.comments.length > 0, 'Issue should have comments');
@@ -374,7 +374,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addComment(issue.id, 'Third comment', 'User1');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card, 'Issue should exist');
                 assert.ok(card.comments, 'Should have comments array');
@@ -401,7 +401,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addComment(issue.id, markdownComment, 'TestUser');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card?.comments && card.comments.length > 0, 'Should have comment');
                 assert.strictEqual(card.comments[0].text, markdownComment, 'Markdown should be stored as-is');
@@ -423,7 +423,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addComment(issue.id, codeComment, 'TestUser');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card?.comments && card.comments.length > 0, 'Should have comment');
                 assert.strictEqual(card.comments[0].text, codeComment, 'Code block should be stored as-is');
@@ -443,7 +443,7 @@ suite('Relationships and Metadata Tests', () => {
                 await adapter.addComment(issue.id, 'Test comment', 'TestUser');
 
                 const board = await adapter.getBoard();
-                const card = board.cards.find(c => c.id === issue.id);
+                const card = (board.cards || []).find(c => c.id === issue.id);
 
                 assert.ok(card?.comments && card.comments.length > 0, 'Should have comment');
                 assert.ok(card.comments[0].created_at, 'Comment should have created_at timestamp');
@@ -468,7 +468,7 @@ suite('Relationships and Metadata Tests', () => {
                     await adapter.addComment(issue.id, '', 'TestUser');
                     // If it succeeds, verify behavior
                     const board = await adapter.getBoard();
-                    const card = board.cards.find(c => c.id === issue.id);
+                    const card = (board.cards || []).find(c => c.id === issue.id);
                     // Either no comment added or empty comment stored
                     if (card?.comments && card.comments.length > 0) {
                         assert.strictEqual(card.comments[0].text, '', 'Empty comment stored');
@@ -509,7 +509,7 @@ suite('Relationships and Metadata Tests', () => {
 
                 // Blocked issue should appear in blocked column based on board logic
                 // (open status but has blockers)
-                const blockedCard = board.cards.find(c => c.id === blocked.id);
+                const blockedCard = (board.cards || []).find(c => c.id === blocked.id);
                 assert.ok(blockedCard, 'Blocked issue should exist');
                 assert.ok(blockedCard.blocked_by && blockedCard.blocked_by.length > 0, 'Should have blockers');
             } catch (err) {

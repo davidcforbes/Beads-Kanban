@@ -54,6 +54,35 @@ export class DaemonBeadsAdapter {
   }
 
   /**
+   * Validates issue ID to prevent command injection
+   * @param issueId Issue ID to validate
+   * @throws Error if issue ID is invalid or potentially dangerous
+   */
+  private validateIssueId(issueId: string): void {
+    if (typeof issueId !== 'string' || !issueId) {
+      throw new Error('Issue ID must be a non-empty string');
+    }
+
+    // Prevent flag injection - IDs starting with hyphens could be interpreted as CLI flags
+    if (issueId.startsWith('-')) {
+      throw new Error(`Invalid issue ID: cannot start with hyphen (${issueId})`);
+    }
+
+    // Validate format: beads-xxxx or project.beads-xxxx
+    // This prevents arbitrary strings from being passed to bd commands
+    const validPattern = /^([a-z0-9._-]+\.)?beads-[a-z0-9]+$/i;
+    if (!validPattern.test(issueId)) {
+      throw new Error(`Invalid issue ID format: ${issueId}. Expected format: beads-xxxx or project.beads-xxxx`);
+    }
+
+    // Defense in depth: reject shell metacharacters
+    const dangerousChars = /[;&|`$(){}[\]<>\\'"]/;
+    if (dangerousChars.test(issueId)) {
+      throw new Error(`Invalid issue ID: contains dangerous characters (${issueId})`);
+    }
+  }
+
+  /**
    * Check if the circuit breaker is currently open.
    * Automatically transitions from OPEN to HALF_OPEN after timeout.
    */
@@ -450,11 +479,27 @@ export class DaemonBeadsAdapter {
   }
 
   /**
+   * Get board metadata (columns only, no cards) for incremental loading
+   */
+  public async getBoardMetadata(): Promise<BoardData> {
+    const columns: BoardColumn[] = [
+      { key: 'ready', title: 'Ready' },
+      { key: 'in_progress', title: 'In Progress' },
+      { key: 'blocked', title: 'Blocked' },
+      { key: 'closed', title: 'Closed' }
+    ];
+
+    // Return only columns, no cards - cards will be loaded via getColumnData
+    return { columns, cards: [] };
+  }
+
+  /**
    * Get comments for a specific issue (lazy-loaded on demand).
    * This method is called when the user opens the detail dialog for an issue.
    */
   public async getIssueComments(issueId: string): Promise<Comment[]> {
     try {
+      this.validateIssueId(issueId);
       // Fetch full issue details including comments
       const result = await this.execBd(['show', '--json', issueId]);
 
@@ -484,36 +529,71 @@ export class DaemonBeadsAdapter {
 
   /**
    * Get the count of issues in a specific column.
-   * Uses bd CLI commands to query column-specific counts.
+   * Uses bd stats for O(1) performance instead of loading all issues.
    */
   public async getColumnCount(column: string): Promise<number> {
+    try {
+      // Use bd stats --json for instant counts (no issue loading required)
+      const stats = await this.execBd(['stats', '--json']);
+
+      if (!stats || !stats.summary) {
+        this.output.appendLine('[DaemonBeadsAdapter] bd stats returned invalid data, falling back to list queries');
+        return this.getColumnCountFallback(column);
+      }
+
+      const summary = stats.summary;
+
+      switch (column) {
+        case 'ready':
+          return summary.ready_issues || 0;
+
+        case 'in_progress':
+          return summary.in_progress_issues || 0;
+
+        case 'blocked':
+          return summary.blocked_issues || 0;
+
+        case 'closed':
+          return summary.closed_issues || 0;
+
+        case 'open':
+          return summary.open_issues || 0;
+
+        default:
+          throw new Error(`Unknown column: ${column}`);
+      }
+    } catch (error) {
+      this.output.appendLine(`[DaemonBeadsAdapter] bd stats failed: ${error}, falling back to list queries`);
+      return this.getColumnCountFallback(column);
+    }
+  }
+
+  /**
+   * Fallback method for getColumnCount when bd stats is unavailable
+   * (for older bd versions or when stats fails)
+   */
+  private async getColumnCountFallback(column: string): Promise<number> {
     try {
       let result: any;
 
       switch (column) {
         case 'ready':
-          // Use bd ready to get issues with no blockers
-          result = await this.execBd(['ready', '--json', '--limit', '0']); // 0 = unlimited
+          result = await this.execBd(['ready', '--json', '--limit', '0']);
           break;
 
         case 'in_progress':
-          // Use bd list with status filter
           result = await this.execBd(['list', '--status=in_progress', '--json', '--limit', '0']);
           break;
 
         case 'blocked':
-          // IMPROVEMENT: Use bd list --status=blocked instead of bd blocked
-          // This is more efficient and consistent with getColumnData
           result = await this.execBd(['list', '--status=blocked', '--json', '--limit', '0']);
           break;
 
         case 'closed':
-          // Use bd list with status filter
           result = await this.execBd(['list', '--status=closed', '--json', '--limit', '0']);
           break;
 
         case 'open':
-          // Use bd list with status filter
           result = await this.execBd(['list', '--status=open', '--json', '--limit', '0']);
           break;
 
@@ -649,7 +729,7 @@ export class DaemonBeadsAdapter {
 
       // Map to BoardCard format using existing helper
       const boardData = this.mapIssuesToBoardData(detailedIssues);
-      return boardData.cards;
+      return boardData.cards || [];
     } catch (error) {
       this.output.appendLine(`[DaemonBeadsAdapter] Failed to get column data for ${column}: ${error instanceof Error ? error.message : String(error)}`);
       return [];
@@ -685,7 +765,7 @@ export class DaemonBeadsAdapter {
 
         // Get all issues from board (uses cache if available)
         const board = await this.getBoard();
-        let allCards = board.cards;
+        let allCards = board.cards || [];
 
         this.output.appendLine(`[DaemonBeadsAdapter] Fetched ${allCards.length} total cards from board`);
 
@@ -1095,6 +1175,7 @@ export class DaemonBeadsAdapter {
    */
   public async setIssueStatus(id: string, toStatus: IssueStatus): Promise<void> {
     try {
+      this.validateIssueId(id);
       await this.execBd(['update', id, '--status', toStatus]);
 
       // Track mutation and invalidate cache
@@ -1124,6 +1205,7 @@ export class DaemonBeadsAdapter {
     defer_until?: string | null;
     status?: string;
   }): Promise<void> {
+    this.validateIssueId(id);
     const args = ['update', id, '--no-daemon']; // Use --no-daemon to bypass daemon bug with --due flag
 
     if (updates.title !== undefined) args.push('--title', updates.title);
@@ -1177,6 +1259,7 @@ export class DaemonBeadsAdapter {
    */
   public async addComment(issueId: string, text: string, author: string): Promise<void> {
     try {
+      this.validateIssueId(issueId);
       // bd comments add expects text as positional argument, not --text flag
       await this.execBd(['comments', 'add', issueId, text, '--author', author]);
 
@@ -1194,6 +1277,7 @@ export class DaemonBeadsAdapter {
    */
   public async addLabel(issueId: string, label: string): Promise<void> {
     try {
+      this.validateIssueId(issueId);
       await this.execBd(['label', 'add', issueId, label]);
 
       // Track mutation and invalidate cache
@@ -1210,6 +1294,7 @@ export class DaemonBeadsAdapter {
    */
   public async removeLabel(issueId: string, label: string): Promise<void> {
     try {
+      this.validateIssueId(issueId);
       await this.execBd(['label', 'remove', issueId, label]);
 
       // Track mutation and invalidate cache
@@ -1226,6 +1311,8 @@ export class DaemonBeadsAdapter {
    */
   public async addDependency(issueId: string, dependsOnId: string, type: 'parent-child' | 'blocks' = 'blocks'): Promise<void> {
     try {
+      this.validateIssueId(issueId);
+      this.validateIssueId(dependsOnId);
       await this.execBd(['dep', 'add', issueId, dependsOnId, '--type', type]);
 
       // Track mutation and invalidate cache
@@ -1242,6 +1329,8 @@ export class DaemonBeadsAdapter {
    */
   public async removeDependency(issueId: string, dependsOnId: string): Promise<void> {
     try {
+      this.validateIssueId(issueId);
+      this.validateIssueId(dependsOnId);
       await this.execBd(['dep', 'remove', issueId, dependsOnId]);
 
       // Track mutation and invalidate cache

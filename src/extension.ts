@@ -406,11 +406,12 @@ export function activate(context: vscode.ExtensionContext) {
             output.appendLine(`[Extension] Closed column not preloaded (${totalCount} total cards available)`);
           }
 
-          const data = await adapter.getBoard();
+          // Use getBoardMetadata() instead of getBoard() to avoid loading all issues
+          const data = await adapter.getBoardMetadata();
           data.columnData = columnDataMap;
 
-          // Validate markdown content in all cards (defense-in-depth)
-          validateBoardCards(data.cards, output);
+          // Validate markdown content in column cards (defense-in-depth)
+          // Note: data.cards is now empty array from getBoardMetadata, actual cards are in columnData
           // Also validate cards in columnData
           for (const column of Object.keys(columnDataMap)) {
             const columnCards = columnDataMap[column as BoardColumnKey]?.cards;
@@ -430,10 +431,10 @@ export function activate(context: vscode.ExtensionContext) {
           // Fallback to legacy full load
           output.appendLine(`[Extension] Adapter does not support incremental loading, using legacy getBoard()`);
           const data = await adapter.getBoard();
-          output.appendLine(`[Extension] Got board data: ${data.cards.length} cards`);
-          
+          output.appendLine(`[Extension] Got board data: ${data.cards?.length || 0} cards`);
+
           // Validate markdown content in all cards (defense-in-depth)
-          validateBoardCards(data.cards, output);
+          validateBoardCards(data.cards || [], output);
           // Check cancellation before posting to prevent race with disposal
           if (!cancellationToken.cancelled) {
             post({ type: "board.data", requestId, payload: data });

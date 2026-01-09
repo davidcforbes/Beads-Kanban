@@ -289,6 +289,17 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Safe function for HTML attributes - escapes quotes and special chars
+function safe(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 // Configure marked to use GFM breaks
 if (typeof marked !== 'undefined') {
     marked.use({
@@ -1042,14 +1053,7 @@ function handleColumnSort(columnId, isShiftKey) {
     render();
 }
 
-function escapeHtml(s) {
-    return String(s ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\"", "&quot;")
-        .replaceAll("'", "&#039;");
-}
+// Removed duplicate escapeHtml function - using the DOM-based implementation at line ~284 instead
 
 // View toggle event listeners
 viewKanbanBtn.addEventListener("click", () => {

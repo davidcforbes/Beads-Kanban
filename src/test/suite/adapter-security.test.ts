@@ -29,9 +29,9 @@ suite('BeadsAdapter Security Tests', () => {
             assert.ok(result.id, 'Issue should be created with ID');
 
             const board = await adapter.getBoard();
-            assert.ok(board.cards.length > 0, 'Board should have issues');
+            assert.ok((board.cards || []).length > 0, 'Board should have issues');
 
-            const createdIssue = board.cards.find(c => c.id === result.id);
+            const createdIssue = (board.cards || []).find(c => c.id === result.id);
             assert.ok(createdIssue, 'Created issue should exist');
             assert.strictEqual(createdIssue.title, maliciousTitle, 'Title should be stored as-is without SQL execution');
         } catch (err) {
@@ -56,7 +56,7 @@ suite('BeadsAdapter Security Tests', () => {
             assert.ok(result.id);
 
             const board = await adapter.getBoard();
-            const createdIssue = board.cards.find(c => c.id === result.id);
+            const createdIssue = (board.cards || []).find(c => c.id === result.id);
             assert.ok(createdIssue);
             assert.strictEqual(createdIssue.description, maliciousDesc, 'Description should be stored as-is');
         } catch (err) {
@@ -77,7 +77,7 @@ suite('BeadsAdapter Security Tests', () => {
             await adapter.addLabel(issue.id, maliciousLabel);
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === issue.id);
+            const card = (board.cards || []).find(c => c.id === issue.id);
             assert.ok(card?.labels.includes(maliciousLabel), 'Label should be stored safely');
         } catch (err) {
             if (err instanceof Error && err.message.includes('No .beads directory')) {
@@ -97,7 +97,7 @@ suite('BeadsAdapter Security Tests', () => {
             await adapter.addComment(issue.id, maliciousComment, 'Attacker');
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === issue.id);
+            const card = (board.cards || []).find(c => c.id === issue.id);
             assert.ok(card?.comments && card.comments.length > 0, 'Comment should exist');
             assert.strictEqual(card.comments[0].text, maliciousComment, 'Comment text should be stored safely');
         } catch (err) {
@@ -120,7 +120,7 @@ suite('BeadsAdapter Security Tests', () => {
             });
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === result.id);
+            const card = (board.cards || []).find(c => c.id === result.id);
             assert.ok(card);
             assert.strictEqual(card.assignee, maliciousAssignee, 'Assignee with null byte should be stored safely');
         } catch (err) {
@@ -144,7 +144,7 @@ suite('BeadsAdapter Security Tests', () => {
             assert.ok(result.id, 'Should handle long strings without crashing');
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === result.id);
+            const card = (board.cards || []).find(c => c.id === result.id);
             assert.ok(card);
             assert.strictEqual(card.description.length, 10000, 'Long description should be stored');
         } catch (err) {
@@ -165,7 +165,7 @@ suite('BeadsAdapter Security Tests', () => {
             await adapter.updateIssue(issue.id, { external_ref: maliciousRef });
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === issue.id);
+            const card = (board.cards || []).find(c => c.id === issue.id);
             assert.ok(card);
             assert.strictEqual(card.external_ref, maliciousRef, 'External ref with SQL should be stored safely');
             assert.notStrictEqual(card.status, 'closed', 'Status should not be modified by SQL injection');
@@ -190,9 +190,9 @@ suite('BeadsAdapter Security Tests', () => {
             assert.ok(result.id);
 
             const board = await adapter.getBoard();
-            assert.ok(board.cards.length > 0, 'Issues table should still exist');
+            assert.ok((board.cards || []).length > 0, 'Issues table should still exist');
 
-            const createdIssue = board.cards.find(c => c.id === result.id);
+            const createdIssue = (board.cards || []).find(c => c.id === result.id);
             assert.ok(createdIssue, 'Created issue should exist');
         } catch (err) {
             if (err instanceof Error && err.message.includes('No .beads directory')) {

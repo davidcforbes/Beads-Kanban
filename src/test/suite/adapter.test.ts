@@ -72,7 +72,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             });
 
             const board = await adapter.getBoard();
-            const updated = board.cards.find(c => c.id === issue.id);
+            const updated = (board.cards || []).find(c => c.id === issue.id);
 
             assert.ok(updated);
             assert.strictEqual(updated.title, 'Updated Title');
@@ -94,7 +94,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.setIssueStatus(issue.id, 'closed');
 
             const board = await adapter.getBoard();
-            const closed = board.cards.find(c => c.id === issue.id);
+            const closed = (board.cards || []).find(c => c.id === issue.id);
 
             assert.ok(closed);
             assert.strictEqual(closed.status, 'closed');
@@ -117,7 +117,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.addLabel(issue.id, 'priority');
 
             let board = await adapter.getBoard();
-            let card = board.cards.find(c => c.id === issue.id);
+            let card = (board.cards || []).find(c => c.id === issue.id);
 
             assert.ok(card);
             assert.ok(card.labels.includes('bug'));
@@ -126,7 +126,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.removeLabel(issue.id, 'bug');
 
             board = await adapter.getBoard();
-            card = board.cards.find(c => c.id === issue.id);
+            card = (board.cards || []).find(c => c.id === issue.id);
 
             assert.ok(card);
             assert.ok(!card.labels.includes('bug'));
@@ -149,7 +149,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.addDependency(issue1.id, issue2.id, 'blocks');
 
             let board = await adapter.getBoard();
-            let card1 = board.cards.find(c => c.id === issue1.id);
+            let card1 = (board.cards || []).find(c => c.id === issue1.id);
 
             assert.ok(card1);
             assert.ok(card1.blocked_by && card1.blocked_by.length > 0, 'Should have blocked_by relationship');
@@ -157,7 +157,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.removeDependency(issue1.id, issue2.id);
 
             board = await adapter.getBoard();
-            card1 = board.cards.find(c => c.id === issue1.id);
+            card1 = (board.cards || []).find(c => c.id === issue1.id);
 
             assert.ok(card1);
             assert.ok(!card1.blocked_by || card1.blocked_by.length === 0, 'Should remove dependency');
@@ -179,7 +179,7 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.addComment(issue.id, 'Second comment', 'Bob');
 
             const board = await adapter.getBoard();
-            const card = board.cards.find(c => c.id === issue.id);
+            const card = (board.cards || []).find(c => c.id === issue.id);
 
             assert.ok(card);
             assert.ok(card.comments && card.comments.length === 2, 'Should have 2 comments');
@@ -200,9 +200,9 @@ suite('BeadsAdapter CRUD Tests', () => {
             const board = await adapter.getBoard();
 
             assert.ok(board.columns, 'Board should have columns');
-            assert.ok(board.cards, 'Board should have cards');
+            assert.ok((board.cards || []), 'Board should have cards');
             assert.ok(Array.isArray(board.columns), 'Columns should be an array');
-            assert.ok(Array.isArray(board.cards), 'Cards should be an array');
+            assert.ok(Array.isArray((board.cards || [])), 'Cards should be an array');
 
             // Check column structure
             if (board.columns.length > 0) {
@@ -228,8 +228,8 @@ suite('BeadsAdapter CRUD Tests', () => {
             await adapter.addDependency(child.id, parent.id, 'parent-child');
 
             const board = await adapter.getBoard();
-            const parentCard = board.cards.find(c => c.id === parent.id);
-            const childCard = board.cards.find(c => c.id === child.id);
+            const parentCard = (board.cards || []).find(c => c.id === parent.id);
+            const childCard = (board.cards || []).find(c => c.id === child.id);
 
             assert.ok(parentCard);
             assert.ok(childCard);

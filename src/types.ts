@@ -126,7 +126,7 @@ export interface BoardColumn {
 
 export interface BoardData {
   columns: BoardColumn[];
-  cards: BoardCard[];
+  cards?: BoardCard[];  // Optional - not needed when using columnData
   // Enhanced fields for incremental loading (optional for backward compat)
   columnData?: ColumnDataMap;
 }
