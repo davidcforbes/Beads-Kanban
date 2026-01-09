@@ -217,7 +217,7 @@ body {
 
 .status-filter-btn {
     min-width: 140px;
-    height: 32px;
+    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: space-between;
