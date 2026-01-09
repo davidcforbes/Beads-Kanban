@@ -6,6 +6,129 @@
     --bg2: rgba(255, 255, 255, 0.06);
 }
 
+/* Form Layout Utilities - Added in 0.6.8 */
+.form-row {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.form-row-wide-label {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.form-row-multi {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.form-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.form-group-large {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1.5;
+    min-width: 0;
+}
+
+.form-input-inline {
+    flex: 1;
+    margin: 0 !important;
+    min-width: 0;
+}
+
+.form-input-full {
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+.form-input-title {
+    font-size: 16px !important;
+    font-weight: bold !important;
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+.form-label {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.form-label-small {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+.form-section-header {
+    margin: 0 0 12px 0;
+}
+
+.form-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.form-hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 4px 0;
+}
+
+.markdown-fields-container {
+    display: flex;
+    gap: 12px;
+    height: 300px;
+}
+
+.markdown-field-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.markdown-field-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.markdown-field-editor {
+    flex: 1;
+    font-family: inherit;
+    resize: none;
+    display: block;
+}
+
+.markdown-field-preview {
+    flex: 1;
+    overflow-y: auto;
+    display: none;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+}
+
 *,
 *::before,
 *::after {
