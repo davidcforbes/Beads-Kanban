@@ -1848,20 +1848,21 @@ async function openDetail(card) {
     form.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <h3 style="margin: 0 0 12px 0;">${isCreateMode ? 'Create New Issue' : `Edit Issue <span style="color: var(--muted); font-weight: normal; font-size: 14px;">${escapeHtml(card.id)}</span>`}</h3>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                 <div style="flex: 1;">
-                    <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Title</label>
-                    <input id="editTitle" type="text" value="${safe(card.title)}" style="width: 100%; font-size: 16px; font-weight: bold; margin-top: 4px;" />
-                 </div>
-                 <div style="display: flex; flex-direction: column; width: 100px;">
+            
+            <!-- Row 1: Title only -->
+            <div>
+                <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Title</label>
+                <input id="editTitle" type="text" value="${safe(card.title)}" style="width: 100%; font-size: 16px; font-weight: bold; margin-top: 4px;" />
+            </div>
+
+            <!-- Row 2: Status, Type, Priority, Assignee -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr; gap: 12px; margin-top: 12px;">
+                <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Status</label>
                     <select id="editStatus" style="width: 100%; margin-top: 4px;">
                         ${statusOptions.map(o => `<option value="${o.v}" ${card.status === o.v ? 'selected' : ''}>${o.l}</option>`).join('')}
                     </select>
-                 </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Type</label>
                     <select id="editType" style="width: 100%; margin-top: 4px;">
@@ -1869,10 +1870,10 @@ async function openDetail(card) {
                     </select>
                 </div>
                 <div>
-                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Priority</label>
-                     <select id="editPriority" style="width: 100%; margin-top: 4px;">
-                        ${priorityOptions.map(p => `<option value="${p}" ${card.priority === p ? 'selected' : ''}>P${p}</option>`).join('')}
-                     </select>
+                    <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Priority</label>
+                    <select id="editPriority" style="width: 100%; margin-top: 4px;">
+                        ${priorityOptions.map(p => `<option value="${p}" ${card.priority === p ? 'selected' : ''}'>P${p}</option>`).join('')}
+                    </select>
                 </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Assignee</label>
@@ -1880,38 +1881,26 @@ async function openDetail(card) {
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                 <div>
+            <!-- Row 3: Est. Minutes, Due At, Defer Until -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px;">
+                <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Est. Minutes</label>
                     <input id="editEst" type="number" value="${card.estimated_minutes || ''}" placeholder="Min" style="width: 100%; margin-top: 4px;" />
                 </div>
                 <div>
-                    <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Ext Ref</label>
-                    <input id="editExtRef" type="text" value="${safe(card.external_ref)}" placeholder="JIRA-123" style="width: 100%; margin-top: 4px;" />
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
-                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Due At</label>
-                    <div class="datetime-wrapper" style="position: relative;">
-                        <input id="editDueAt" type="datetime-local" value="${toLocalDateTimeInput(card.due_at)}" style="width: 100%; margin-top: 4px;" data-original-value="${toLocalDateTimeInput(card.due_at)}" />
-                        <div class="datetime-buttons" style="display: none; margin-top: 4px; gap: 4px;">
-                            <button class="btn datetime-save" style="padding: 2px 8px; font-size: 11px;">Save</button>
-                            <button class="btn datetime-cancel" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
-                        </div>
-                    </div>
+                    <input id="editDueAt" type="datetime-local" value="${toLocalDateTimeInput(card.due_at)}" style="width: 100%; margin-top: 4px;" />
                 </div>
                 <div>
                     <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Defer Until</label>
-                    <div class="datetime-wrapper" style="position: relative;">
-                        <input id="editDeferUntil" type="datetime-local" value="${toLocalDateTimeInput(card.defer_until)}" style="width: 100%; margin-top: 4px;" data-original-value="${toLocalDateTimeInput(card.defer_until)}" />
-                        <div class="datetime-buttons" style="display: none; margin-top: 4px; gap: 4px;">
-                            <button class="btn datetime-save" style="padding: 2px 8px; font-size: 11px;">Save</button>
-                            <button class="btn datetime-cancel" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
-                        </div>
-                    </div>
+                    <input id="editDeferUntil" type="datetime-local" value="${toLocalDateTimeInput(card.defer_until)}" style="width: 100%; margin-top: 4px;" />
                 </div>
+            </div>
+
+            <!-- Row 4: Ext Ref -->
+            <div style="margin-top: 12px;">
+                <label style="font-size: 10px; color: var(--muted); text-transform: uppercase;">Ext Ref</label>
+                <input id="editExtRef" type="text" value="${safe(card.external_ref)}" placeholder="JIRA-123" style="width: 100%; margin-top: 4px;" />
             </div>
 
             <!-- Flags -->
@@ -2603,36 +2592,7 @@ ${card.design || 'None'}
         };
     });
 
-    // Datetime input Save/Cancel functionality
-    form.querySelectorAll(".datetime-wrapper").forEach(wrapper => {
-        const input = wrapper.querySelector("input[type='datetime-local']");
-        const buttonsDiv = wrapper.querySelector(".datetime-buttons");
-        const saveBtn = wrapper.querySelector(".datetime-save");
-        const cancelBtn = wrapper.querySelector(".datetime-cancel");
-
-        if (!input || !buttonsDiv || !saveBtn || !cancelBtn) return;
-
-        // Show buttons when value changes
-        input.addEventListener("change", () => {
-            buttonsDiv.style.display = "flex";
-        });
-
-        // Save: hide buttons, keep value, update original value
-        saveBtn.onclick = (e) => {
-            e.preventDefault();
-            input.dataset.originalValue = input.value;
-            buttonsDiv.style.display = "none";
-            toast("Date/time saved");
-        };
-
-        // Cancel: restore original value, hide buttons
-        cancelBtn.onclick = (e) => {
-            e.preventDefault();
-            input.value = input.dataset.originalValue;
-            buttonsDiv.style.display = "none";
-            toast("Date/time change cancelled");
-        };
-    });
+    // Datetime inputs use native browser datepicker (no custom Save/Cancel buttons)
 
     detDialog.showModal();
 }
