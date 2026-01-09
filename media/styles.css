@@ -1,123 +1,1216 @@
+:root {
+    --pad: 12px;
+    --radius: 10px;
+    --border: rgba(255, 255, 255, 0.12);
+    --muted: rgba(255, 255, 255, 0.7);
+    --bg2: rgba(255, 255, 255, 0.06);
+}
 
-/* Form Layout Utilities - Added in 0.6.8 */
-.form-row {
-    display: grid;
-    grid-template-columns: 50px 1fr;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--pad);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    /* Ensure header doesn't shrink */
+}
+
+/* ... title, actions, buttons ... */
+.title {
+    font-weight: 600;
+    display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
 }
 
-.form-row-wide-label {
-    display: grid;
-    grid-template-columns: 60px 1fr;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.form-row-multi {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-.form-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+.title-text {
     flex: 1;
-    min-width: 0;
 }
 
-.form-group-large {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1.5;
-    min-width: 0;
-}
-
-.form-input-inline {
-    flex: 1;
-    margin: 0 !important;
-    min-width: 0;
-}
-
-.form-input-full {
-    width: 100% !important;
-    margin: 0 !important;
-}
-
-.form-input-title {
-    font-size: 16px !important;
-    font-weight: bold !important;
-    width: 100% !important;
-    margin: 0 !important;
-}
-
-.form-label {
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.form-label-small {
-    font-size: 10px;
+.repo-menu-btn {
+    border: 1px solid var(--border);
+    background: transparent;
     color: var(--muted);
-    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    transition: all 0.15s ease;
 }
 
-.form-section-header {
-    margin: 0 0 12px 0;
+.repo-menu-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--vscode-editor-foreground);
+    border-color: var(--vscode-editor-foreground);
 }
 
-.form-container {
+.actions {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
-.form-hr {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 4px 0;
+.btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
 }
 
-.markdown-fields-container {
+.select {
+    border: 1px solid var(--vscode-dropdown-border);
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* Custom status filter dropdown */
+.status-filter-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.status-filter-btn {
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+}
+
+.status-filter-btn .dropdown-arrow {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.status-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    min-width: 180px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.status-dropdown.hidden {
+    display: none;
+}
+
+.status-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    user-select: none;
+}
+
+.status-option:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.status-option input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.search-input {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    padding: 6px 10px;
+    border-radius: 8px;
+    width: 150px;
+}
+
+.btn.primary {
+    background: var(--bg2);
+}
+
+/* View toggle buttons */
+.view-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.view-toggle-btn {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 13px;
+}
+
+.view-toggle-btn:not(:last-child) {
+    border-right: 1px solid var(--border);
+}
+
+.view-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--vscode-editor-foreground);
+}
+
+.view-toggle-btn.active {
+    background: var(--bg2);
+    color: var(--vscode-editor-foreground);
+    font-weight: 500;
+}
+
+.filters {
+    display: flex;
+    gap: 8px;
+}
+
+.board {
     display: flex;
     gap: 12px;
-    height: 300px;
-}
-
-.markdown-field-wrapper {
+    padding: var(--pad);
     flex: 1;
+    overflow-y: hidden;
+    overflow-x: auto;
+    height: 100%;
+}
+
+.column {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    flex: 1;
+    min-width: 220px;
+    transition: all 0.2s ease;
+}
+
+.columnHeader {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.columnTitle {
+    font-weight: 600;
+}
+
+.columnCount {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.dropZone {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    overflow-y: auto;
     min-height: 0;
 }
 
-.markdown-field-header {
+.card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: grab;
+}
+
+.card:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+.cardTitle {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.badge {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+.dialog {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    outline: none;
+}
+
+.dialogForm {
+    padding: 14px;
+    min-width: 480px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#detailDialog {
+    width: 900px;
+    height: 85vh;
+    max-width: 95vw;
+    max-height: 95vh;
+    overflow: hidden;
+    /* Form handles scroll */
+}
+
+/* Ensure contents can scroll if needed, but main layout is fixed */
+#detailDialog form {
+    overflow-y: auto;
+}
+
+.dialogForm input,
+.dialogForm textarea,
+.dialogForm select {
+    width: 100%;
+    margin: 6px 0 12px 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    color: inherit;
+    border-radius: 10px;
+    padding: 8px;
+    color-scheme: dark;
+}
+
+/* Ensure options also have dark background */
+.dialogForm select option {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}
+
+/* Smaller font for datetime pickers */
+.dialogForm input[type="datetime-local"] {
+    font-size: 13px;
+}
+
+/* Narrow input for estimate minutes */
+.input-estimate {
+    max-width: 100px;
+}
+
+.dialogActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.toast {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    right: 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 999;
+}
+
+.toast-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: #4daafc;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.toast-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.toast.hidden {
+    display: none;
+}
+
+/* SortableJS styles */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--bg2);
+    border: 1px dashed var(--muted);
+}
+
+.sortable-chosen {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sortable-drag {
+    cursor: grabbing;
+}
+
+/* Type Badges */
+.badge-type-bug {
+    background: rgba(234, 84, 85, 0.15);
+    color: #ea5455;
+    border-color: rgba(234, 84, 85, 0.3);
+}
+
+.badge-type-feature {
+    background: rgba(40, 199, 111, 0.15);
+    color: #28c76f;
+    border-color: rgba(40, 199, 111, 0.3);
+}
+
+.badge-type-task {
+    background: rgba(115, 103, 240, 0.15);
+    color: #7367f0;
+    border-color: rgba(115, 103, 240, 0.3);
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Collapsed Columns */
+.column.collapsed {
+    flex: 0 0 40px;
+    min-width: 40px;
+    /* Override grid/flex min defaults if any */
+    width: 40px;
+    transition: all 0.2s ease;
+}
+
+.column.collapsed .dropZone,
+.column.collapsed .columnCount {
+    display: none;
+}
+
+.column.collapsed .columnHeader {
+    flex-direction: column-reverse;
+    justify-content: flex-start;
+    gap: 12px;
+    height: 100%;
+    align-items: center;
+    padding-top: 12px;
+}
+
+.column.collapsed .columnTitle {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    margin-bottom: auto;
+    /* Push to top (visually bottom due to rotate) */
+}
+
+/* Icon button for collapse/expand */
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.icon-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--vscode-editor-foreground);
+}
+
+/* Relationships */
+.cardParent {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.icon-parent {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.badge-blocked {
+    background: rgba(234, 84, 85, 0.1);
+    color: #ea5455;
+    border-color: rgba(234, 84, 85, 0.3);
+}
+
+/* Scheduling Badges */
+.badge-due {
+    background: rgba(77, 170, 252, 0.15);
+    color: #4daafc;
+    border-color: rgba(77, 170, 252, 0.3);
+}
+
+.badge-overdue {
+    background: rgba(234, 84, 85, 0.15);
+    color: #ea5455;
+    border-color: rgba(234, 84, 85, 0.3);
+}
+
+.badge-defer {
+    background: rgba(255, 159, 67, 0.15);
+    color: #ff9f43;
+    border-color: rgba(255, 159, 67, 0.3);
+}
+
+/* Flag Badges */
+.badge-flag {
+    background: rgba(115, 103, 240, 0.1);
+    color: #7367f0;
+    border-color: rgba(115, 103, 240, 0.2);
+}
+
+/* Priority Badges */
+.badge-priority-0 {
+    background: rgba(234, 84, 85, 0.2);
+    color: #ea5455;
+    border-color: rgba(234, 84, 85, 0.4);
+    font-weight: 600;
+}
+
+.badge-priority-1 {
+    background: rgba(255, 159, 67, 0.2);
+    color: #ff9f43;
+    border-color: rgba(255, 159, 67, 0.4);
+    font-weight: 600;
+}
+
+.badge-priority-2 {
+    background: rgba(77, 170, 252, 0.15);
+    color: #4daafc;
+    border-color: rgba(77, 170, 252, 0.3);
+}
+
+.badge-priority-3 {
+    background: rgba(115, 103, 240, 0.1);
+    color: #7367f0;
+    border-color: rgba(115, 103, 240, 0.2);
+}
+
+.badge-priority-4 {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Estimate Badge */
+.badge-estimate {
+    background: rgba(40, 199, 111, 0.1);
+    color: #28c76f;
+    border-color: rgba(40, 199, 111, 0.25);
+}
+
+/* Assignee Badge */
+.badge-assignee {
+    background: rgba(77, 170, 252, 0.1);
+    color: #4daafc;
+    border-color: rgba(77, 170, 252, 0.25);
+}
+
+.badge-assignee.badge-unassigned {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    border-color: rgba(255, 255, 255, 0.15);
+    font-style: italic;
+}
+
+/* Markdown Styles */
+.markdown-body {
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.markdown-body p {
+    margin: 6px 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+
+.markdown-body code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.markdown-body pre {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.markdown-body a {
+    color: #4daafc;
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body blockquote {
+    border-left: 3px solid var(--border);
+    margin: 6px 0;
+    padding-left: 10px;
+    color: var(--muted);
+}
+
+/* Utility Classes */
+.filters {
+    margin-right: 12px;
+}
+
+.detTitle {
+    margin-top: 0;
+}
+
+.detMeta {
+    margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.detHr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+}
+
+.detDesc {
+    white-space: pre-wrap;
+    font-family: inherit;
+    opacity: 0.9;
+}
+
+.detActions {
+    margin-top: 16px;
+}
+
+.actionButtons {
+    margin-right: auto;
+    display: flex;
+    gap: 8px;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 9999;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: var(--vscode-editor-foreground);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.loading-text {
+    color: var(--vscode-editor-foreground);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.loading-overlay.hidden {
+    display: none;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Load More button styles */
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    padding: 12px;
+    margin-top: 8px;
+}
+
+.load-more-btn {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--vscode-editor-foreground);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.load-more-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--vscode-editor-foreground);
+}
+
+.load-more-btn:active {
+    transform: scale(0.98);
+}
+
+.load-more-btn:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+/* Column loading spinner */
+.column-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.column-loading .spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: var(--vscode-editor-foreground);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Table View Styles */
+.table-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.table-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
+    padding: var(--pad);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
 }
 
-.markdown-field-editor {
-    flex: 1;
-    font-family: inherit;
-    resize: none;
-    display: block;
+.table-controls-left,
+.table-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
-.markdown-field-preview {
+.table-wrapper {
     flex: 1;
-    overflow-y: auto;
-    display: none;
-    padding: 8px;
+    overflow: auto;
+    padding: var(--pad);
+}
+
+.issues-table {
+    width: 100%;
+    border-collapse: collapse;
     border: 1px solid var(--border);
-    border-radius: 10px;
-    background: rgba(255,255,255,0.03);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.issues-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.issues-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+}
+
+.issues-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.issues-table th.sortable:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.issues-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.issues-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.issues-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.issues-table tbody tr:active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Table cell content */
+.table-id {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.table-id.copy-id {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+.table-id.copy-id:hover {
+    color: var(--vscode-editor-foreground);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.table-title {
+    font-weight: 500;
+}
+
+.table-date {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Sort indicator */
+.sort-indicator {
+    display: inline-block;
+    margin-left: 6px;
+    opacity: 0.6;
+    font-size: 10px;
+}
+
+.sort-indicator.asc::after {
+    content: '▲';
+}
+
+.sort-indicator.desc::after {
+    content: '▼';
+}
+
+/* Table toolbar and footer */
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--pad);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.table-footer {
+    padding: var(--pad);
+    border-top: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--pad);
+    border-top: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    flex-shrink: 0;
+}
+
+.table-pagination .pagination-info {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.table-pagination .pagination-btn {
+    margin-left: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.table-pagination .pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Column dialog (for column selection) */
+.column-dialog {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    outline: none;
+    min-width: 500px;
+}
+
+.column-dialog .dialog-header {
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.column-dialog .dialog-body {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 12px;
+    max-height: 400px;
+}
+
+.column-dialog .column-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    min-height: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.column-dialog .column-item {
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.column-dialog .column-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.column-dialog .column-item.selected {
+    background: rgba(77, 170, 252, 0.15);
+    border: 1px solid rgba(77, 170, 252, 0.3);
+}
+
+.column-dialog .dialog-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+}
+
+.column-dialog .dialog-footer {
+    padding: 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ===== RESPONSIVE BREAKPOINTS ===== */
+
+/* Tablet/Medium screens (max-width: 1024px) */
+@media (max-width: 1024px) {
+    /* Reduce Kanban column min-width for better fit */
+    .column {
+        min-width: 180px;
+    }
+
+    /* Adjust dialog sizes */
+    #detailDialog {
+        width: 85vw;
+        max-width: 85vw;
+    }
+
+    .dialogForm {
+        min-width: auto;
+    }
+
+    .column-dialog {
+        min-width: 400px;
+    }
+
+    /* Hide less important table columns on medium screens */
+    .issues-table th:nth-child(7),  /* External Ref */
+    .issues-table td:nth-child(7) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(8),  /* Updated */
+    .issues-table td:nth-child(8) {
+        display: none;
+    }
+}
+
+/* Mobile/Small screens (max-width: 768px) */
+@media (max-width: 768px) {
+    /* Adjust topbar layout */
+    .topbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .filters {
+        flex-wrap: wrap;
+        margin-right: 0;
+    }
+
+    .search-input {
+        width: 100%;
+    }
+
+    /* Make dialogs full-screen on mobile */
+    #detailDialog {
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .dialogForm {
+        min-width: auto;
+        padding: 12px;
+    }
+
+    .column-dialog {
+        min-width: auto;
+        width: 95vw;
+    }
+
+    .column-dialog .dialog-body {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .column-dialog .dialog-controls {
+        flex-direction: row;
+        justify-content: center;
+    }
+
+    /* Reduce Kanban column padding and sizes */
+    .board {
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .column {
+        min-width: 160px;
+    }
+
+    .card {
+        padding: 8px;
+    }
+
+    .dropZone {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    /* Hide many table columns on mobile - show only essentials */
+    .issues-table th:nth-child(2),  /* Status */
+    .issues-table td:nth-child(2) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(5),  /* Type */
+    .issues-table td:nth-child(5) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(6),  /* Assignee */
+    .issues-table td:nth-child(6) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(7),  /* External Ref */
+    .issues-table td:nth-child(7) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(8),  /* Updated */
+    .issues-table td:nth-child(8) {
+        display: none;
+    }
+
+    .issues-table th:nth-child(9),  /* Created */
+    .issues-table td:nth-child(9) {
+        display: none;
+    }
+
+    /* Keep visible: ID, Title, Priority */
+    .issues-table th,
+    .issues-table td {
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+
+    /* Adjust table pagination for mobile */
+    .table-pagination {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .table-pagination .pagination-btn {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Reduce padding throughout */
+    :root {
+        --pad: 8px;
+    }
+
+    /* Adjust metadata grid for mobile */
+    .detMeta {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Extra small screens (max-width: 480px) */
+@media (max-width: 480px) {
+    /* Further reduce Kanban column sizes */
+    .column {
+        min-width: 140px;
+    }
+
+    .columnHeader {
+        padding: 8px;
+        font-size: 13px;
+    }
+
+    .card {
+        padding: 6px;
+    }
+
+    .cardTitle {
+        font-size: 13px;
+    }
+
+    .badges {
+        font-size: 11px;
+    }
+
+    /* Stack action buttons vertically */
+    .actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .actions .btn,
+    .actions .select {
+        width: 100%;
+    }
+
+    /* Make table even more compact */
+    .issues-table th,
+    .issues-table td {
+        padding: 4px 6px;
+        font-size: 12px;
+    }
+
+    /* Adjust dialog actions to stack */
+    .dialogActions {
+        flex-direction: column;
+    }
+
+    .dialogActions .btn {
+        width: 100%;
+    }
+
+    .actionButtons {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .actionButtons .btn {
+        width: 100%;
+    }
 }
