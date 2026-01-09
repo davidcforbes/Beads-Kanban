@@ -1860,8 +1860,8 @@ async function openDetail(card) {
                                 ` : '<span style="font-style:italic;">None</span>'}
                             </div>
                             ${!card.parent ? `
-                                <div style="display: flex; gap: 4px;">
-                                    <input id="newParentId" type="text" placeholder="Parent Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                                <div style="display: flex; gap: 4px; max-width: 100%;">
+                                    <input id="newParentId" type="text" placeholder="Parent Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px; min-width: 0;" />
                                     <button id="btnSetParent" class="btn" style="padding: 2px 8px;">Set</button>
                                 </div>
                             ` : ''}
@@ -1879,8 +1879,8 @@ async function openDetail(card) {
                             `).join('')}
                           </ul>
                           ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px;">None</div>'}
-                          <div style="display: flex; gap: 4px;">
-                                <input id="newBlockerId" type="text" placeholder="Blocker Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                          <div style="display: flex; gap: 4px; max-width: 100%;">
+                                <input id="newBlockerId" type="text" placeholder="Blocker Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px; min-width: 0;" />
                                 <button id="btnAddBlocker" class="btn" style="padding: 2px 8px;">Add</button>
                           </div>
 
@@ -1906,8 +1906,8 @@ async function openDetail(card) {
                               `).join('')}
                             </ul>
                           ` : '<div style="font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px;">None</div>'}
-                          <div style="display: flex; gap: 4px;">
-                                <input id="newChildId" type="text" placeholder="Child Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px;" />
+                          <div style="display: flex; gap: 4px; max-width: 100%;">
+                                <input id="newChildId" type="text" placeholder="Child Issue ID" list="${issueOptionsId}" style="flex: 1; margin: 0; font-size: 12px; padding: 4px; min-width: 0;" />
                                 <button id="btnAddChild" class="btn" style="padding: 2px 8px;">Add</button>
                           </div>
     `;
@@ -2416,7 +2416,7 @@ async function openDetail(card) {
                 card.blocked_by = updated.blocked_by;
             }
         } catch (err) {
-
+            console.error("Error refreshing relationships:", err);
         }
         refreshStructureSection();
     }
