@@ -84,6 +84,9 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
 }
 
 .form-hr {
@@ -258,8 +261,22 @@ body {
     overflow: hidden;
 }
 
+/* Constrain datalist inputs to prevent dropdown overflow */
 #structureSection input[list] {
     max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Attempt to constrain datalist dropdown width (browser support varies) */
+#structureSection datalist {
+    max-width: 100%;
+}
+
+/* Ensure the parent container of relationship inputs is constrained */
+#structureSection > div {
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .status-option {
