@@ -117,4 +117,98 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
             throw err;
         }
     });
+    test('Get minimal board data (fast loading)', async function () {
+        this.timeout(10000);
+        try {
+            const cards = await adapter.getBoardMinimal();
+            assert.ok(Array.isArray(cards), 'Should return array of minimal cards');
+            // Verify MinimalCard structure if there are cards
+            if (cards.length > 0) {
+                const card = cards[0];
+                // Check all MinimalCard required fields
+                assert.ok(card.id, 'MinimalCard should have id');
+                assert.ok(typeof card.title === 'string', 'MinimalCard should have title string');
+                assert.ok(typeof card.description === 'string', 'MinimalCard should have description string');
+                assert.ok(card.status, 'MinimalCard should have status');
+                assert.ok(typeof card.priority === 'number', 'MinimalCard should have priority number');
+                assert.ok(card.issue_type, 'MinimalCard should have issue_type');
+                assert.ok(card.created_at, 'MinimalCard should have created_at');
+                assert.ok(card.created_by, 'MinimalCard should have created_by');
+                assert.ok(card.updated_at, 'MinimalCard should have updated_at');
+                assert.ok(typeof card.dependency_count === 'number', 'MinimalCard should have dependency_count number');
+                assert.ok(typeof card.dependent_count === 'number', 'MinimalCard should have dependent_count number');
+                // Verify MinimalCard does NOT have full card fields (optional check)
+                // These fields should not be present in MinimalCard
+                assert.strictEqual(card.acceptance_criteria, undefined, 'MinimalCard should not have acceptance_criteria');
+                assert.strictEqual(card.design, undefined, 'MinimalCard should not have design');
+                assert.strictEqual(card.notes, undefined, 'MinimalCard should not have notes');
+                assert.strictEqual(card.comments, undefined, 'MinimalCard should not have comments');
+            }
+        }
+        catch (err) {
+            if (err instanceof Error && err.message.includes('daemon is not running')) {
+                this.skip();
+            }
+            throw err;
+        }
+    });
+    test('Get full issue details', async function () {
+        this.timeout(10000);
+        try {
+            // First create a test issue to load
+            const createResult = await adapter.createIssue({
+                title: 'Test Full Issue Load',
+                description: 'Testing getIssueFull method',
+                acceptance_criteria: 'Test criteria',
+                design: 'Test design',
+                notes: 'Test notes',
+                priority: 2,
+                issue_type: 'task'
+            });
+            assert.ok(createResult.id, 'Should create test issue');
+            // Now load the full issue
+            const fullCard = await adapter.getIssueFull(createResult.id);
+            // Verify FullCard has all MinimalCard fields
+            assert.ok(fullCard.id, 'FullCard should have id');
+            assert.strictEqual(fullCard.title, 'Test Full Issue Load', 'FullCard should have correct title');
+            assert.strictEqual(fullCard.description, 'Testing getIssueFull method', 'FullCard should have correct description');
+            assert.ok(fullCard.status, 'FullCard should have status');
+            assert.strictEqual(fullCard.priority, 2, 'FullCard should have correct priority');
+            assert.strictEqual(fullCard.issue_type, 'task', 'FullCard should have correct issue_type');
+            assert.ok(fullCard.created_at, 'FullCard should have created_at');
+            assert.ok(fullCard.created_by, 'FullCard should have created_by');
+            assert.ok(fullCard.updated_at, 'FullCard should have updated_at');
+            assert.ok(typeof fullCard.dependency_count === 'number', 'FullCard should have dependency_count');
+            assert.ok(typeof fullCard.dependent_count === 'number', 'FullCard should have dependent_count');
+            // Verify FullCard has extended fields
+            assert.strictEqual(fullCard.acceptance_criteria, 'Test criteria', 'FullCard should have acceptance_criteria');
+            assert.strictEqual(fullCard.design, 'Test design', 'FullCard should have design');
+            assert.strictEqual(fullCard.notes, 'Test notes', 'FullCard should have notes');
+            // Verify FullCard has relationship arrays (even if empty)
+            assert.ok(Array.isArray(fullCard.children), 'FullCard should have children array');
+            assert.ok(Array.isArray(fullCard.blocks), 'FullCard should have blocks array');
+            assert.ok(Array.isArray(fullCard.blocked_by), 'FullCard should have blocked_by array');
+            assert.ok(Array.isArray(fullCard.comments), 'FullCard should have comments array');
+            // Clean up - close the test issue
+            await adapter.setIssueStatus(createResult.id, 'closed');
+        }
+        catch (err) {
+            if (err instanceof Error && err.message.includes('daemon is not running')) {
+                this.skip();
+            }
+            throw err;
+        }
+    });
+    test('Get full issue for non-existent ID should fail', async function () {
+        this.timeout(10000);
+        try {
+            await assert.rejects(async () => await adapter.getIssueFull('non-existent-id-12345'), /Issue not found/, 'Should reject with Issue not found error');
+        }
+        catch (err) {
+            if (err instanceof Error && err.message.includes('daemon is not running')) {
+                this.skip();
+            }
+            throw err;
+        }
+    });
 });

@@ -267,7 +267,8 @@ class BeadsAdapter {
         }
     }
     async reloadDatabase() {
-        // Set reload lock to prevent concurrent mutations
+        // Set reload lock BEFORE flushing saves to prevent race condition
+        // This ensures no mutations can occur between save lock release and reload lock acquisition
         this.isReloading = true;
         try {
             // CRITICAL: Flush any pending saves before reloading to prevent data loss

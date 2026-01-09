@@ -416,6 +416,25 @@ document.addEventListener('visibilitychange', () => {
 // Also cleanup on page unload
 window.addEventListener('pagehide', cleanupPendingRequests);
 
+// Periodic cleanup for stale requests (prevents memory leak if extension becomes unresponsive)
+setInterval(() => {
+    const now = Date.now();
+    const MAX_REQUEST_AGE = 60000; // 60 seconds
+    let cleanedCount = 0;
+
+    for (const [reqId, { timeoutId, createdAt }] of pendingRequests.entries()) {
+        if (createdAt && now - createdAt > MAX_REQUEST_AGE) {
+            clearTimeout(timeoutId);
+            pendingRequests.delete(reqId);
+            cleanedCount++;
+        }
+    }
+
+    if (cleanedCount > 0) {
+        console.log(`[Cleanup] Removed ${cleanedCount} stale request(s) older than 60s`);
+    }
+}, 10000); // Run cleanup every 10 seconds
+
 function requestId() {
     return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -434,9 +453,9 @@ function postAsync(type, payload, loadingMessage = 'Loading...') {
             }
         }, 30000);
 
-        // Store resolve, reject, AND timeoutId in the Map
-        // This allows response handlers to clear the timeout properly
-        pendingRequests.set(reqId, { resolve, reject, timeoutId });
+        // Store resolve, reject, timeoutId, and createdAt in the Map
+        // This allows response handlers to clear the timeout properly and periodic cleanup
+        pendingRequests.set(reqId, { resolve, reject, timeoutId, createdAt: Date.now() });
         vscode.postMessage({ type, requestId: reqId, payload });
     }).finally(() => {
         // Cleanup: Clear the timeout if the request is still pending
@@ -2070,7 +2089,7 @@ async function openDetail(card) {
                                 <span>${escapeHtml(c.author)}</span>
                                 <span>${new Date(c.created_at).toLocaleString()}</span>
                             </div>
-                            <div class="markdown-body" style="font-size: 13px;">${DOMPurify.sanitize(marked.parse(c.text), purifyConfig)}</div>
+                            <div class="markdown-body" style="font-size: 13px;">${safeRenderMarkdown(c.text)}</div>
                         </div>
                     `).join('') : '<div style="font-size: 12px; color: var(--muted); font-style: italic;">No comments yet.</div>'}
                 </div>
@@ -2178,6 +2197,7 @@ async function openDetail(card) {
                     const newIssueId = createResponse?.payload?.id;
                     
                     // Post any comments that were added in create mode
+                    let failedComments = 0;
                     if (newIssueId && card.comments && card.comments.length > 0) {
                         for (const comment of card.comments) {
                             try {
@@ -2187,13 +2207,19 @@ async function openDetail(card) {
                                     author: comment.author
                                 }, "Adding comment...");
                             } catch (commentErr) {
-                
-                                // Don't fail the whole operation if a comment fails
+                                // Track failed comments but don't fail the whole operation
+                                failedComments++;
+                                console.error(`Failed to post comment: ${commentErr.message}`);
                             }
                         }
                     }
-                    
-                    toast("Issue created successfully");
+
+                    // Show appropriate success/warning message
+                    if (failedComments > 0) {
+                        toast(`Issue created, but ${failedComments} comment(s) failed to post`);
+                    } else {
+                        toast("Issue created successfully");
+                    }
                 } else {
                     // Update existing issue
                     await postAsync("issue.update", { id: card.id, updates: data }, "Saving changes...");
@@ -2211,6 +2237,22 @@ async function openDetail(card) {
         }
     };
 
+    /**
+     * Safely render markdown with size limits to prevent DoS
+     * @param {string} text - The markdown text to render
+     * @returns {string} - Sanitized HTML or error message if too large
+     */
+    function safeRenderMarkdown(text) {
+        const MAX_MARKDOWN_SIZE = 100000; // 100KB limit
+        if (!text) return '';
+        if (text.length > MAX_MARKDOWN_SIZE) {
+            return `<div class="error" style="color: var(--error); padding: 8px; background: rgba(255,0,0,0.1); border-radius: 4px;">
+                Content too large to display (${Math.round(text.length / 1024)}KB). Maximum size: ${Math.round(MAX_MARKDOWN_SIZE / 1024)}KB.
+            </div>`;
+        }
+        return DOMPurify.sanitize(marked.parse(text), purifyConfig);
+    }
+
     function renderCommentsList() {
         if (!card.comments || card.comments.length === 0) {
             return '<div style="font-size: 12px; color: var(--muted); font-style: italic;">No comments yet.</div>';
@@ -2221,7 +2263,7 @@ async function openDetail(card) {
                     <span>${escapeHtml(c.author)}</span>
                     <span>${new Date(c.created_at).toLocaleString()}</span>
                 </div>
-                <div class="markdown-body" style="font-size: 13px;">${DOMPurify.sanitize(marked.parse(c.text), purifyConfig)}</div>
+                <div class="markdown-body" style="font-size: 13px;">${safeRenderMarkdown(c.text)}</div>
             </div>
         `).join('');
     }

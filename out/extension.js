@@ -49,6 +49,27 @@ const MAX_CLIPBOARD_TEXT = 100_000; // 100KB for clipboard
 // Sanitize error messages to prevent leaking implementation details
 // sanitizeError is now imported from ./sanitizeError
 /**
+ * Sanitizes text for CSV injection attacks.
+ * Prefixes text starting with formula-triggering characters with a single quote.
+ * This prevents Excel/CSV applications from interpreting the content as formulas.
+ *
+ * @param text - The text to sanitize
+ * @returns Sanitized text safe for clipboard/CSV
+ */
+function sanitizeForCSV(text) {
+    if (!text || text.length === 0) {
+        return text;
+    }
+    // Check if text starts with formula-triggering characters
+    const dangerousChars = ['=', '+', '-', '@', '\t', '\r'];
+    const firstChar = text.charAt(0);
+    if (dangerousChars.includes(firstChar)) {
+        // Prefix with single quote to treat as literal text
+        return "'" + text;
+    }
+    return text;
+}
+/**
  * Validates markdown content in all cards before sending to webview.
  * Logs warnings for suspicious content but does not block sending.
  * This is a defense-in-depth measure - webview still uses DOMPurify.
@@ -727,7 +748,9 @@ function activate(context) {
                             post({ type: "mutation.error", requestId: msg.requestId, error: `Text too large for clipboard (max ${MAX_CLIPBOARD_TEXT} characters)` });
                             return;
                         }
-                        vscode.env.clipboard.writeText(msg.payload.text);
+                        // Sanitize for CSV injection before copying to clipboard
+                        const sanitizedText = sanitizeForCSV(msg.payload.text);
+                        vscode.env.clipboard.writeText(sanitizedText);
                         post({ type: "mutation.ok", requestId: msg.requestId });
                         vscode.window.showInformationMessage("Issue context copied to clipboard.");
                         return;
@@ -896,7 +919,7 @@ function activate(context) {
                             sendBoard(requestId);
                         }
                         catch (error) {
-                            const errorMsg = `Failed to reload database: ${error instanceof Error ? error.message : String(error)}`;
+                            const errorMsg = `Failed to reload database: ${(0, sanitizeError_1.sanitizeErrorWithContext)(error)}`;
                             // Send error to webview
                             panel.webview.postMessage({
                                 type: "mutation.error",

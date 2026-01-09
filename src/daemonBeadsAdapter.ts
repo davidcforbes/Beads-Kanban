@@ -70,6 +70,11 @@ export class DaemonBeadsAdapter {
       throw new Error(`Invalid issue ID: cannot start with hyphen (${issueId})`);
     }
 
+    // Defense-in-depth: reject whitespace that could enable argument injection
+    if (issueId.includes(' ') || issueId.includes('\t') || issueId.includes('\n') || issueId.includes('\r')) {
+      throw new Error(`Invalid issue ID: whitespace not allowed (${issueId})`);
+    }
+
     // Validate format: beads-xxxx or project.beads-xxxx
     // This prevents arbitrary strings from being passed to bd commands
     const validPattern = /^([a-z0-9._-]+\.)?beads-[a-z0-9]+$/i;
