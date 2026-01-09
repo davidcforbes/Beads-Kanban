@@ -1071,10 +1071,10 @@ function loadTablePage(page = null) {
     if (tableState.sorting.length > 0) {
         // Use first sort column (primary sort)
         const primarySort = tableState.sorting[0];
-        sortedCards = sortCards(filteredCards, primarySort.id, primarySort.dir);
+        sortedCards = getSortedCards(filteredCards, primarySort.id, primarySort.dir);
     } else {
         // Default sort by updated_at descending
-        sortedCards = sortCards(filteredCards, 'updated_at', 'desc');
+        sortedCards = getSortedCards(filteredCards, 'updated_at', 'desc');
     }
 
     // Calculate pagination
