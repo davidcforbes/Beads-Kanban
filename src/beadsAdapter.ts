@@ -4,7 +4,7 @@ import * as path from "path";
 import initSqlJs, { Database, QueryExecResult } from "sql.js";
 import * as vscode from "vscode";
 import { v4 as uuidv4 } from "uuid";
-import { BoardCard, BoardData, BoardColumn, IssueRow, IssueStatus, Comment, DependencyInfo, MinimalCard, FullCard } from "./types";
+import { BoardCard, BoardData, BoardColumn, IssueRow, IssueStatus, Comment, DependencyInfo, MinimalCard, EnrichedCard, FullCard } from "./types";
 import { sanitizeError } from "./sanitizeError";
 
 // sanitizeError is now imported from ./sanitizeError
@@ -684,7 +684,7 @@ export class BeadsAdapter {
   // Phase 3: Fast minimal board loading for 3-tier progressive architecture
   // Returns MinimalCard[] with only 13 core fields, no relationships/comments
   // Expected performance: <100ms for 400 issues (vs 300-500ms for full getBoard)
-  public async getBoardMinimal(): Promise<MinimalCard[]> {
+  public async getBoardMinimal(): Promise<EnrichedCard[]> {
     if (!this.db) await this.ensureConnected();
     if (!this.db) throw new Error('Failed to connect to database');
 
@@ -695,8 +695,8 @@ export class BeadsAdapter {
       await this.reloadFromDisk();
     }
 
-    // Single fast query with COUNT subqueries for dependency counts
-    // No JOINs to labels/dependencies/comments tables
+    // Fast query with enriched fields (assignee, labels, etc.) for better card display
+    // Uses GROUP_CONCAT for labels - minimal overhead vs pure MinimalCard
     const rows = this.queryAll(`
       SELECT
         i.id,
@@ -714,10 +714,18 @@ export class BeadsAdapter {
           ELSE NULL 
         END AS close_reason,
         (SELECT COUNT(*) FROM dependencies d WHERE d.issue_id = i.id) AS dependency_count,
-        (SELECT COUNT(*) FROM dependencies d WHERE d.depends_on_id = i.id) AS dependent_count
+        (SELECT COUNT(*) FROM dependencies d WHERE d.depends_on_id = i.id) AS dependent_count,
+        i.assignee,
+        i.estimated_minutes,
+        i.external_ref,
+        i.pinned,
+        (SELECT COUNT(*) FROM dependencies d WHERE d.issue_id = i.id AND d.type = 'blocks') AS blocked_by_count,
+        GROUP_CONCAT(l.label, '|||') AS labels_str
       FROM issues i
       LEFT JOIN issue_creators ic ON ic.issue_id = i.id
+      LEFT JOIN labels l ON l.issue_id = i.id
       WHERE i.deleted_at IS NULL
+      GROUP BY i.id
       ORDER BY i.priority ASC, i.updated_at DESC, i.created_at DESC
       LIMIT 10000;
     `) as Array<{
@@ -734,9 +742,15 @@ export class BeadsAdapter {
       close_reason: string | null;
       dependency_count: number;
       dependent_count: number;
+      assignee: string | null;
+      estimated_minutes: number | null;
+      external_ref: string | null;
+      pinned: number | null;
+      blocked_by_count: number;
+      labels_str: string | null;
     }>;
 
-    const cards: MinimalCard[] = rows.map(r => ({
+    const cards: EnrichedCard[] = rows.map(r => ({
       id: r.id,
       title: r.title,
       description: r.description,
@@ -749,10 +763,16 @@ export class BeadsAdapter {
       closed_at: r.closed_at,
       close_reason: r.close_reason,
       dependency_count: r.dependency_count,
-      dependent_count: r.dependent_count
+      dependent_count: r.dependent_count,
+      assignee: r.assignee,
+      estimated_minutes: r.estimated_minutes,
+      external_ref: r.external_ref,
+      pinned: r.pinned === 1,
+      blocked_by_count: r.blocked_by_count,
+      labels: r.labels_str ? r.labels_str.split('|||') : []
     }));
 
-    this.output.appendLine(`[BeadsAdapter] getBoardMinimal() loaded ${cards.length} minimal cards`);
+    this.output.appendLine(`[BeadsAdapter] getBoardMinimal() loaded ${cards.length} enriched cards`);
     return cards;
   }
 

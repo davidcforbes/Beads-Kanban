@@ -5,6 +5,7 @@ import {
   BoardColumn,
   BoardCard,
   MinimalCard,
+  EnrichedCard,
   FullCard,
   IssueStatus,
   DependencyInfo,
@@ -485,7 +486,7 @@ export class DaemonBeadsAdapter {
    * Uses single bd list query without bd show - expected 100-300ms for 400 issues
    * Returns only essential fields for displaying cards in kanban columns
    */
-  public async getBoardMinimal(): Promise<MinimalCard[]> {
+  public async getBoardMinimal(): Promise<EnrichedCard[]> {
     try {
       // Single fast query - no batching needed
       const issues = await this.execBd(['list', '--json', '--all', '--limit', '10000']);
@@ -495,8 +496,8 @@ export class DaemonBeadsAdapter {
         return [];
       }
 
-      // Map to MinimalCard - no relationships, just core fields
-      const minimalCards: MinimalCard[] = issues.map((issue: any) => ({
+      // Map to EnrichedCard - includes labels, assignee for better card display
+      const enrichedCards: EnrichedCard[] = issues.map((issue: any) => ({
         id: issue.id,
         title: issue.title || '',
         description: issue.description || '',
@@ -509,11 +510,17 @@ export class DaemonBeadsAdapter {
         closed_at: issue.closed_at || null,
         close_reason: issue.close_reason || null,
         dependency_count: issue.dependency_count || 0,
-        dependent_count: issue.dependent_count || 0
+        dependent_count: issue.dependent_count || 0,
+        assignee: issue.assignee || null,
+        estimated_minutes: issue.estimated_minutes || null,
+        labels: Array.isArray(issue.labels) ? issue.labels : [],
+        external_ref: issue.external_ref || null,
+        pinned: issue.pinned || false,
+        blocked_by_count: issue.blocked_by_count || 0
       }));
 
-      this.output.appendLine(`[DaemonBeadsAdapter] getBoardMinimal: Loaded ${minimalCards.length} minimal cards`);
-      return minimalCards;
+      this.output.appendLine(`[DaemonBeadsAdapter] getBoardMinimal: Loaded ${enrichedCards.length} enriched cards`);
+      return enrichedCards;
     } catch (error) {
       throw new Error(`Failed to get minimal board data: ${error instanceof Error ? error.message : String(error)}`);
     }
