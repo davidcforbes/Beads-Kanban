@@ -485,13 +485,14 @@ function getFilteredCards() {
             continue;
         }
         
-        // Search filter (title, description, or ID)
+        // Search filter (title, description, ID, or labels)
         if (sVal !== "") {
             const titleMatch = card.title.toLowerCase().includes(sVal);
             const descMatch = card.description && card.description.toLowerCase().includes(sVal);
             const idMatch = card.id.toLowerCase().includes(sVal);
+            const labelMatch = card.labels && card.labels.some(label => label.toLowerCase().includes(sVal));
             
-            if (!titleMatch && !descMatch && !idMatch) {
+            if (!titleMatch && !descMatch && !idMatch && !labelMatch) {
                 continue;
             }
         }
