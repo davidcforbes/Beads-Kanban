@@ -63,3 +63,10 @@ media/purify.min.js
 
 # Archive directory for obsolete documentation
 .Archive/
+
+# Screenshots in root (organized versions are in images/screenshots/)
+/Screenshot*.jpg
+/Screenshot*.png
+/*Edit Form*.jpg
+/*Table*.jpg
+/*Kanban*.jpg

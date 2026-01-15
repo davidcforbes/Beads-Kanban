@@ -5,6 +5,23 @@ A visual Kanban board VS Code extension for managing [Beads](https://github.com/
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Screenshots
+
+### Kanban View
+Drag-and-drop cards between columns to manage your workflow.
+
+![Kanban View](images/screenshots/kanban-view.jpg)
+
+### Table View
+Sort, filter, and customize columns for detailed issue management.
+
+![Table View](images/screenshots/table-view.jpg)
+
+### Edit Issue Form
+Comprehensive issue editing with all metadata fields, dependencies, and comments.
+
+![Edit Form](images/screenshots/edit-form.jpg)
+
 ## Features
 
 ✨ **Visual Kanban Board**
