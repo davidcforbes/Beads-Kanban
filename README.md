@@ -47,10 +47,11 @@ Comprehensive issue editing with all metadata fields, dependencies, and comments
 - Markdown support with live preview
 - Rich metadata fields (priority, assignee, estimated time, etc.)
 
-⚡ **Dual Adapter Support**
+⚡ **Daemon Integration**
 
-- **sql.js adapter**: In-memory SQLite for fast local operations
-- **Daemon adapter**: Uses `bd` CLI for advanced features
+- Uses `bd` CLI daemon for all database operations
+- Auto-starts daemon when extension loads
+- Efficient incremental data loading
 
 ## Installation
 
@@ -64,6 +65,11 @@ Comprehensive issue editing with all metadata fields, dependencies, and comments
 ### From Marketplace (Coming Soon)
 
 Search for "Beads Kanban" in the VS Code Extensions marketplace.
+
+## Prerequisites
+
+- **Beads CLI** (`bd`): Required for all database operations. Install from [github.com/steveyegge/beads](https://github.com/steveyegge/beads)
+- The extension auto-starts the `bd` daemon when needed
 
 ## Quick Start
 
@@ -94,7 +100,6 @@ Beads is an AI-native issue tracking system that lives directly in your codebase
 | Setting | Default | Description |
 | --------- | --------- | ------------- |
 | `beadsKanban.readOnly` | `false` | Enable read-only mode (no edits) |
-| `beadsKanban.useDaemonAdapter` | `false` | Use `bd` daemon instead of in-memory adapter |
 | `beadsKanban.initialLoadLimit` | `100` | Issues per column on initial load |
 | `beadsKanban.pageSize` | `50` | Issues to load when clicking "Load More" |
 | `beadsKanban.preloadClosedColumn` | `false` | Load closed issues on initial load |
@@ -155,9 +160,7 @@ npm run test:adapter
 The extension uses a clean architecture with three main layers:
 
 - **Extension Host** (`src/extension.ts`): Command registration, webview lifecycle, message routing
-- **Data Adapters**:
-  - `src/beadsAdapter.ts`: sql.js in-memory adapter
-  - `src/daemonBeadsAdapter.ts`: CLI-based daemon adapter
+- **Data Adapter** (`src/daemonBeadsAdapter.ts`): CLI-based daemon adapter for all database operations
 - **Webview UI** (`media/board.js`, `media/styles.css`): Reactive UI with incremental loading
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.

@@ -21,7 +21,7 @@
     "agile",
     "visualization"
   ],
-  "version": "1.0.5",
+  "version": "2.0.0",
   "publisher": "davidcforbes",
   "icon": "images/icon.png",
   "engines": {
@@ -53,11 +53,6 @@
           "type": "boolean",
           "default": false,
           "description": "If true, disables write operations (create/move/update)."
-        },
-        "beadsKanban.useDaemonAdapter": {
-          "type": "boolean",
-          "default": false,
-          "description": "If true, use the bd CLI daemon adapter instead of the in-memory SQLite adapter. Requires bd daemon to be running."
         },
         "beadsKanban.maxIssues": {
           "type": "number",
@@ -128,7 +123,6 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.11.30",
     "@types/sinon": "^17.0.4",
-    "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.90.0",
     "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.5.2",
@@ -142,10 +136,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@types/sql.js": "^1.4.9",
     "dompurify": "^3.3.1",
-    "sql.js": "^1.13.0",
-    "uuid": "^10.0.0",
     "zod": "^4.3.4"
   }
 }

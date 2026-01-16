@@ -24,12 +24,6 @@ function copyFile(src, dest) {
   }
 }
 
-// Copy sql-wasm.wasm to out/
-copyFile(
-  path.join(__dirname, '../node_modules/sql.js/dist/sql-wasm.wasm'),
-  path.join(__dirname, '../out/sql-wasm.wasm')
-);
-
 // Copy purify.min.js to media/
 copyFile(
   path.join(__dirname, '../node_modules/dompurify/dist/purify.min.js'),

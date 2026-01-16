@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { BeadsAdapter } from "./beadsAdapter";
 import { DaemonBeadsAdapter } from "./daemonBeadsAdapter";
 import { DaemonManager } from "./daemonManager";
 import { getWebviewHtml } from "./webview";
@@ -117,20 +116,15 @@ export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel("Beads Kanban");
   output.appendLine('[BeadsAdapter] Environment Versions: ' + JSON.stringify(process.versions, null, 2));
 
-  // Determine which adapter to use based on configuration
-  const config = vscode.workspace.getConfiguration('beadsKanban');
-  const useDaemonAdapter = config.get<boolean>('useDaemonAdapter', false);
-
+  // Always use DaemonBeadsAdapter (v2.0+ is daemon-only)
   const ws = vscode.workspace.workspaceFolders?.[0];
-  let adapter: BeadsAdapter | DaemonBeadsAdapter;
-
-  if (useDaemonAdapter && ws) {
-    output.appendLine('[Extension] Using DaemonBeadsAdapter');
-    adapter = new DaemonBeadsAdapter(ws.uri.fsPath, output);
-  } else {
-    output.appendLine('[Extension] Using BeadsAdapter (sql.js)');
-    adapter = new BeadsAdapter(output);
+  if (!ws) {
+    vscode.window.showErrorMessage('Beads Kanban requires an open workspace folder.');
+    return;
   }
+
+  output.appendLine('[Extension] Using DaemonBeadsAdapter');
+  const adapter = new DaemonBeadsAdapter(ws.uri.fsPath, output);
 
   context.subscriptions.push(output);
   context.subscriptions.push({ dispose: () => adapter.dispose() });
@@ -175,8 +169,8 @@ export function activate(context: vscode.ExtensionContext) {
           statusBarItem.tooltip = "Daemon not running";
           statusBarItem.backgroundColor = undefined;
 
-          // Auto-start daemon if configured to use it and haven't tried yet
-          if (useDaemonAdapter && !autoStartAttempted) {
+          // Auto-start daemon if not running and haven't tried yet
+          if (!autoStartAttempted) {
             autoStartAttempted = true;
             output.appendLine('[Extension] Daemon not running, attempting auto-start...');
             try {
@@ -188,14 +182,11 @@ export function activate(context: vscode.ExtensionContext) {
               output.appendLine(`[Extension] Failed to auto-start daemon: ${sanitizeError(startError)}`);
               // Show notification with option to start manually
               vscode.window.showWarningMessage(
-                'Beads daemon is not running. The extension requires the daemon when configured to use DaemonBeadsAdapter.',
-                'Start Daemon',
-                'Disable Daemon Mode'
+                'Beads daemon is not running. The extension requires the daemon to be running.',
+                'Start Daemon'
               ).then(action => {
                 if (action === 'Start Daemon') {
                   vscode.commands.executeCommand('beadsKanban.showDaemonActions');
-                } else if (action === 'Disable Daemon Mode') {
-                  vscode.workspace.getConfiguration('beadsKanban').update('useDaemonAdapter', false, true);
                 }
               });
             }

@@ -4,17 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a VS Code extension that provides a Kanban board interface for issues stored in a `.beads` SQLite database. It supports two data adapters:
-
-- sql.js adapter: loads the SQLite DB into memory and writes changes back to disk.
-- Daemon adapter: uses the `bd` CLI/daemon for reads and mutations.
-The board uses incremental, column-based loading to keep large databases responsive.
+This is a VS Code extension that provides a Kanban board interface for issues stored in a `.beads` SQLite database. The extension uses the `bd` CLI daemon for all database operations, providing efficient incremental loading and real-time updates. The board uses column-based loading to keep large databases (10,000+ issues) responsive.
 
 ## Development Commands
 
 ### Build and Watch
 
-- `npm run compile` - Compile TypeScript and copy WASM/assets
+- `npm run compile` - Compile TypeScript and copy assets (DOMPurify)
 - `npm run watch` - Watch mode for development
 - `npm run lint` - Run ESLint on TypeScript files
 
@@ -39,8 +35,7 @@ Running specific tests: The test runner uses Mocha. To run a specific test file 
 Extension Host (TypeScript/Node.js)
 
 - `src/extension.ts` - Entry point; registers commands, creates webview panel, routes messages, enforces read-only mode, and wires file watching
-- `src/beadsAdapter.ts` - sql.js adapter; loads the DB, performs queries/mutations, and debounced saves
-- `src/daemonBeadsAdapter.ts` - Daemon adapter; uses `bd` CLI to read and mutate issues
+- `src/daemonBeadsAdapter.ts` - Daemon adapter; uses `bd` CLI to read and mutate issues with efficient caching
 - `src/daemonManager.ts` - Runs `bd` daemon status/actions and populates the status bar
 - `src/types.ts` - Type definitions and Zod schemas
 - `src/webview.ts` - Generates webview HTML with CSP and asset URIs
@@ -106,22 +101,15 @@ The board displays 4 columns:
 
 Moving cards between columns updates the underlying issue status. The Ready column maps back to open.
 
-### Data Adapters
+### Data Adapter
 
-sql.js adapter
-
-- Loads the DB into memory on first connection
-- Uses batched queries for labels/dependencies/comments
-- Debounced save (300ms) with atomic write
-- Tracks file mtime and reloads on external changes
-- Supports column-based incremental loading via `getColumnData` / `getColumnCount`
-
-daemon adapter
+The extension uses the DaemonBeadsAdapter exclusively for all database operations:
 
 - Uses column-based `bd` queries for incremental loading and `bd show --json` for details
-- Uses `bd` for mutations (create/update/move/comments/labels/deps)
+- Uses `bd` CLI for mutations (create/update/move/comments/labels/deps)
 - Short-lived cache to reduce CLI overhead
 - Exposes `getColumnData` / `getColumnCount` for incremental loading paths
+- Auto-starts daemon on extension load if not running
 
 ### Input Validation
 
@@ -175,7 +163,7 @@ Enhanced response:
 - Column headers show "loaded / total" counts
 
 **Backend Support:**
-Both adapters implement:
+The adapter implements:
 
 - `getColumnData(column, offset, limit)` - Paginated column queries
 - `getColumnCount(column)` - Fast count queries
@@ -209,8 +197,8 @@ The Create New Issue and Edit Issue forms will be consolidated into a single sha
 
 ## Important Notes
 
-- The daemon adapter requires `bd` on PATH and a running daemon.
-- `npm run compile` copies `sql-wasm.wasm` and DOMPurify; the `copy-deps` script currently uses `cp`.
+- The extension requires `bd` CLI on PATH and auto-starts the daemon on load.
+- `npm run compile` copies DOMPurify to the media folder via the `copy-deps` script.
 - Webview scripts are loaded via CSP nonce; HTML uses inline styles extensively.
 - `retainContextWhenHidden: true` keeps webview state when hidden.
 - Markdown preview uses marked.js with GFM and DOMPurify sanitization.
