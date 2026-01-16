@@ -5,6 +5,76 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-16
+
+### 🚨 BREAKING CHANGES
+
+- **Daemon-only architecture**: Extension now requires `bd` CLI daemon for all operations
+- Removed `beadsKanban.useDaemonAdapter` configuration option (always daemon mode)
+- sql.js adapter and all in-memory SQLite functionality removed
+
+### ✨ Added
+
+- Auto-start daemon functionality when extension loads
+- Comprehensive migration guide (MIGRATION.md)
+- External dependencies security review documentation (External_Dependencies_Review.md)
+- Improved error messaging for daemon connection issues
+
+### 🗑️ Removed
+
+- **sql.js adapter** (~1.7MB) - Complete removal of in-memory SQLite functionality
+- **src/beadsAdapter.ts** (~2000 lines) - Removed sql.js-based adapter class
+- **uuid** dependency - Completely unused package eliminated
+- **@types/uuid** - Type definitions for removed package
+- **@types/sql.js** - Type definitions for removed package
+- **9 test files** - BeadsAdapter-specific tests no longer applicable
+- `beadsKanban.useDaemonAdapter` configuration option
+- sql-wasm.wasm file copy from build process
+
+### 📝 Changed
+
+- Extension now always uses DaemonBeadsAdapter for all database operations
+- Extension requires workspace folder to be open (improved error handling)
+- Updated README.md with daemon requirements and prerequisites section
+- Updated CLAUDE.md to remove sql.js references and clarify daemon-only architecture
+- Daemon auto-start attempts on extension load if not running
+- Improved daemon status messaging and error handling
+
+### 📦 Dependencies
+
+**Removed:**
+- sql.js: ^1.13.0 (~1.7MB saved)
+- @types/sql.js: ^1.4.9
+- uuid: ^10.0.0 (unused)
+- @types/uuid: ^10.0.0 (unused)
+
+**Current runtime dependencies (2):**
+- dompurify: ^3.3.1 (23KB minified)
+- zod: ^4.3.4 (58KB unminified)
+
+**Bundle size reduction:** ~1.7MB
+
+### 🔧 Internal
+
+- Simplified adapter architecture (one adapter instead of two)
+- Removed 9 adapter-specific test files
+- Updated copy-deps.js script to remove sql-wasm.wasm handling
+- Cleaned up extension.ts adapter selection logic
+
+### 📚 Documentation
+
+- Added MIGRATION.md with comprehensive v1.x to v2.0.0 upgrade guide
+- Added External_Dependencies_Review.md with security analysis
+- Updated README.md with new prerequisites and daemon requirements
+- Updated CLAUDE.md with daemon-only architecture documentation
+
+### 🐛 Bug Fixes
+
+- Fixed potential null reference when no workspace folder is open
+- Improved daemon connection error messages
+
+---
+
 ## [1.0.5] - 2026-01-15
 
 ### Fixed
