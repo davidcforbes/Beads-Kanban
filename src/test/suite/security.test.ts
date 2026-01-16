@@ -303,8 +303,8 @@ suite('Security Tests', () => {
 
             for (const type of validTypes) {
                 const input = {
-                    issueId: 'test-id',
-                    dependsOnId: 'other-id',
+                    id: 'test-id',
+                    otherId: 'other-id',
                     type
                 };
                 const result = DependencySchema.safeParse(input);
@@ -379,7 +379,7 @@ suite('Security Tests', () => {
 
         test('CommentAddSchema: Handles boundary values', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'test-id',
                 text: 'a', // Minimum valid length (1)
                 author: 'b'.repeat(100) // Maximum valid length (100)
             };

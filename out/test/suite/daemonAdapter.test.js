@@ -202,7 +202,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
     test('Get full issue for non-existent ID should fail', async function () {
         this.timeout(10000);
         try {
-            await assert.rejects(async () => await adapter.getIssueFull('non-existent-id-12345'), /Issue not found/, 'Should reject with Issue not found error');
+            await assert.rejects(async () => await adapter.getIssueFull('beads-non-existent-12345'), /Issue not found/, 'Should reject with Issue not found error');
         }
         catch (err) {
             if (err instanceof Error && err.message.includes('daemon is not running')) {

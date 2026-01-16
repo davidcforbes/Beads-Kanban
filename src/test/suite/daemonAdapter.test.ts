@@ -193,7 +193,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
 
         try {
             await assert.rejects(
-                async () => await adapter.getIssueFull('non-existent-id-12345'),
+                async () => await adapter.getIssueFull('beads-non-existent-12345'),
                 /Issue not found/,
                 'Should reject with Issue not found error'
             );

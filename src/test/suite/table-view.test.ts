@@ -50,7 +50,8 @@ suite('Table View Tests', () => {
         test('Has search filter input', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
             assert.ok(html.includes('id="filterSearch"'), 'Should have search filter input');
-            assert.ok(html.includes('placeholder="Search..."'), 'Search input should have placeholder text');
+            // Search placeholder may include keyboard shortcut hint
+            assert.ok(html.match(/placeholder="Search\.\.\./), 'Search input should have placeholder text');
         });
 
         test('Has priority filter dropdown', () => {
@@ -184,7 +185,7 @@ suite('Table View Tests', () => {
 
         test('Includes main.js application script', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('main.js'), 'Should include main.js script');
+            assert.ok(html.includes('board.js'), 'Should include board.js script');
         });
 
         test('All scripts use nonce for CSP', () => {

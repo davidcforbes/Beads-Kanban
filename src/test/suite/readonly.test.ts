@@ -178,7 +178,8 @@ suite('Read-Only Mode and UX Feedback Tests', () => {
 
         test('Note: Filter controls should have placeholders or labels', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('placeholder="Search..."'), 'Search should have placeholder');
+            // Search placeholder may include keyboard shortcut hint
+            assert.ok(html.match(/placeholder="Search\.\.\./), 'Search should have placeholder');
             assert.ok(html.includes('Priority:'), 'Priority filter should have label');
             assert.ok(html.includes('Type:'), 'Type filter should have label');
         });
