@@ -16,6 +16,9 @@ last-touched
 # Local version tracking (prevents upgrade notification spam after git ops)
 .local_version
 
+# Local beads issue tracking (do not commit)
+.beads/
+
 # Legacy database files
 db.sqlite
 bd.db
@@ -33,10 +36,8 @@ beads.right.jsonl
 beads.right.meta.json
 
 # NOTE: Do NOT add negation patterns (e.g., !issues.jsonl) here.
-# They would override fork protection in .git/info/exclude, allowing
-# contributors to accidentally commit upstream issue databases.
-# The JSONL files (issues.jsonl, interactions.jsonl) and config files
-# are tracked by git by default since no pattern above ignores them.
+# They would override the .beads ignore and allow local issue databases
+# to be committed accidentally.
 
 .Archive/
 .vscode-test/
