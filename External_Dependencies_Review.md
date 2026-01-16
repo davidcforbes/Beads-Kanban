@@ -30,14 +30,15 @@ See [MIGRATION.md](MIGRATION.md) for upgrade guide.
 
 ## Executive Summary
 
-**Current State (v2.0.0):**
+**Current State (v2.0.0+):**
 - **2 runtime dependencies** (down from 5): `dompurify`, `zod`
-- **3 webview dependencies**: `Sortable.js`, `marked.js`, `purify.min.js`
+- **2 webview dependencies**: `marked.js`, `purify.min.js`
+- **1 bundled dependency**: `@atlaskit/pragmatic-drag-and-drop` (ESM, bundled with esbuild)
 - **Daemon-only architecture**: Requires `bd` CLI
-- **Bundle size**: ~1.7MB smaller than v1.x
+- **Bundle size**: ~1.7MB smaller than v1.x (SQLite removal) + ~39KB smaller than v2.0.0 (Sortable.js → Pragmatic D&D)
 
-**Remaining Optimizations:**
-- **Replace Sortable.js (44KB) with Pragmatic Drag and Drop (4.7KB)** - 90% bundle reduction, enterprise support from Atlassian, actively maintained (planned for v2.1)
+**✅ Completed Optimizations:**
+- **Replaced Sortable.js (44KB) with Pragmatic Drag and Drop (~5KB bundled)** - 90% bundle reduction, enterprise support from Atlassian, actively maintained
 
 ---
 

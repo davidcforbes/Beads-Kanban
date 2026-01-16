@@ -172,9 +172,9 @@ suite('Table View Tests', () => {
             assert.ok(html.includes('purify.min.js'), 'Should include DOMPurify script');
         });
 
-        test('Includes Sortable.js library', () => {
+        test('Includes webview bundle', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('Sortable.min.js'), 'Should include Sortable.js script');
+            assert.ok(html.includes('out/webview/board.js'), 'Should include bundled webview script');
         });
 
         test('Includes Marked.js library for markdown', () => {

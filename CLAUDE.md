@@ -42,9 +42,9 @@ Extension Host (TypeScript/Node.js)
 
 Webview (JavaScript/HTML/CSS)
 
-- `media/board.js` - UI logic; Sortable drag-and-drop, filters, detail dialog, incremental column loading, and request/response messaging
+- `src/webview/board.js` - UI logic source; bundled with Pragmatic Drag and Drop using esbuild
+- `out/webview/board.js` - Bundled webview JavaScript with drag-and-drop functionality
 - `media/styles.css` - Theme-aware styling
-- `media/Sortable.min.js` - Drag-and-drop library
 - `media/marked.min.js` - Markdown rendering
 - `media/purify.min.js` - DOMPurify for sanitization
 

@@ -533,7 +533,7 @@ body {
     display: none;
 }
 
-/* SortableJS styles */
+/* Drag-and-drop styles (Pragmatic Drag and Drop) */
 .sortable-ghost {
     opacity: 0.4;
     background: var(--bg2);
