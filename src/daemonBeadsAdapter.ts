@@ -78,7 +78,8 @@ export class DaemonBeadsAdapter {
     // Validate format: beads-xxxx or project.beads-xxxx
     // This prevents arbitrary strings from being passed to bd commands
     // Allow hyphens and dots in the ID suffix (e.g., beads-kanban-3ae, beads-hct.2)
-    const validPattern = /^([a-z0-9._-]+\.)?beads-[a-z0-9.-]+$/i;
+    // BUT prevent consecutive special characters to avoid argument injection
+    const validPattern = /^([a-z0-9]+([._-][a-z0-9]+)*\.)?beads-[a-z0-9]+([._-][a-z0-9]+)*$/i;
     if (!validPattern.test(issueId)) {
       throw new Error(`Invalid issue ID format: ${issueId}. Expected format: beads-xxxx or project.beads-xxxx`);
     }

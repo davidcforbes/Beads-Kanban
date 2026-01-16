@@ -303,7 +303,7 @@ export const DependencySchema = z.object({
 // Schemas for incremental loading messages
 export const BoardLoadColumnSchema = z.object({
   column: BoardColumnKeySchema,
-  offset: z.number().int().min(0),
+  offset: z.number().int().min(0).max(5000), // Prevent DoS from excessive offset values
   limit: z.number().int().min(1).max(500)
 });
 

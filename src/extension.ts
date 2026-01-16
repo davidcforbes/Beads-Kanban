@@ -72,16 +72,20 @@ function sanitizeForCSV(text: string): string {
     return text;
   }
 
-  // Check if text starts with formula-triggering characters
-  const dangerousChars = ['=', '+', '-', '@', '\t', '\r'];
-  const firstChar = text.charAt(0);
+  // Replace tabs and newlines with spaces to prevent cell splitting
+  let sanitized = text.replace(/[\t\r\n]/g, ' ');
 
-  if (dangerousChars.includes(firstChar)) {
-    // Prefix with single quote to treat as literal text
-    return "'" + text;
+  // Check if text starts with formula-triggering characters and prefix with quote
+  const formulaChars = ['=', '+', '-', '@'];
+  if (formulaChars.includes(sanitized.charAt(0))) {
+    sanitized = "'" + sanitized;
   }
 
-  return text;
+  // Additional defense: Escape any remaining formula injection attempts
+  // Replace formula chars that appear after whitespace (common injection vector)
+  sanitized = sanitized.replace(/(\s+)([=+\-@])/g, '$1\'$2');
+
+  return sanitized;
 }
 
 /**
@@ -343,6 +347,12 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       try {
+        // Additional check for panel disposal to prevent race conditions
+        if (!panel || !panel.webview) {
+          output.appendLine(`[Extension] Panel disposed before posting ${msg.type}`);
+          isDisposed = true;
+          return;
+        }
         panel.webview.postMessage(msg);
       } catch (e) {
         output.appendLine(`[Extension] Error posting message: ${sanitizeError(e)}`);

@@ -26,6 +26,55 @@ const filterStatusDropdown = document.getElementById("filterStatusDropdown");
 const filterSearch = document.getElementById("filterSearch");
 const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
+// Set up event delegation for card interactions
+// This prevents memory leaks from re-attaching listeners on every render
+function setupBoardEventDelegation() {
+    if (!boardEl) return;
+
+    // Handle click events on cards
+    boardEl.addEventListener('click', (e) => {
+        // Find the closest .card element
+        const cardEl = e.target.closest('.card');
+        if (!cardEl) return;
+
+        const cardId = cardEl.dataset.id;
+        if (!cardId) return;
+
+        // Look up the card from cardCache
+        const card = cardCache.get(cardId);
+        if (!card) {
+            console.warn('Card not found in cache:', cardId);
+            return;
+        }
+
+        openDetail(card);
+    });
+
+    // Handle keyboard events on cards (Enter and Space)
+    boardEl.addEventListener('keydown', (e) => {
+        // Only handle if target is a card
+        if (!e.target.classList.contains('card')) return;
+
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+
+            const cardId = e.target.dataset.id;
+            if (!cardId) return;
+
+            const card = cardCache.get(cardId);
+            if (!card) {
+                console.warn('Card not found in cache:', cardId);
+                return;
+            }
+
+            openDetail(card);
+        }
+    });
+}
+
+// Initialize event delegation
+setupBoardEventDelegation();
+
 // Custom status filter dropdown logic
 function getSelectedStatuses() {
     if (!filterStatusDropdown) return [];
@@ -84,7 +133,8 @@ if (filterStatusBtn && filterStatusDropdown) {
             }
 
             updateStatusLabel();
-            render();
+            // Use debounced render to prevent excessive re-renders
+            debouncedRender();
         });
     });
 
@@ -135,8 +185,8 @@ let tablePaginationState = {
     loading: false
 };
 
-// Flag to track if column picker document listener has been added
-let columnPickerDocListenerAdded = false;
+// Store column picker document listener for cleanup
+let columnPickerDocListener = null;
 
 // Debounce utility for performance optimization
 function debounce(func, wait) {
@@ -191,7 +241,7 @@ const tableColumns = [
     getValue: c => c.issue_type || 'task',
     render: (c) => {
       const type = c.issue_type || 'task';
-      return `<span class="badge badge-type-${type}">${escapeHtml(type)}</span>`;
+      return `<span class="badge ${sanitizeClassName('badge-type-' + type)}">${escapeHtml(type)}</span>`;
     },
     sort: (a, b) => {
       const order = ['epic', 'feature', 'bug', 'task', 'chore'];
@@ -394,6 +444,19 @@ function safe(str) {
         .replace(/'/g, '&#039;');
 }
 
+// Validate CSS class names to prevent injection attacks
+// Only allows alphanumeric, hyphens, and underscores
+function sanitizeClassName(cls) {
+    if (!cls) return '';
+    // Allow only safe characters in class names
+    const safe = String(cls).replace(/[^a-zA-Z0-9_-]/g, '');
+    // Prevent classes that start with numbers or hyphens followed by numbers
+    if (safe && !/^-?\d/.test(safe)) {
+        return safe;
+    }
+    return '';
+}
+
 // Configure marked to use GFM breaks
 if (typeof marked !== 'undefined') {
     marked.use({
@@ -424,7 +487,8 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', cleanupPendingRequests);
 
 // Periodic cleanup for stale requests (prevents memory leak if extension becomes unresponsive)
-setInterval(() => {
+// Store interval ID so it can be cleaned up on webview disposal
+const cleanupIntervalId = setInterval(() => {
     const now = Date.now();
     const MAX_REQUEST_AGE = 60000; // 60 seconds
     let cleanedCount = 0;
@@ -441,6 +505,11 @@ setInterval(() => {
         console.log(`[Cleanup] Removed ${cleanedCount} stale request(s) older than 60s`);
     }
 }, 10000); // Run cleanup every 10 seconds
+
+// Clear interval on page unload to prevent memory leak
+window.addEventListener('pagehide', () => {
+    clearInterval(cleanupIntervalId);
+});
 
 function requestId() {
     return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -735,6 +804,10 @@ function render() {
     }
 }
 
+// Create debounced render function for filter changes (300ms delay)
+// This prevents excessive re-renders when users change multiple filters quickly
+const debouncedRender = debounce(render, 300);
+
 // Kanban view rendering
 function renderKanban() {
 
@@ -774,6 +847,24 @@ function renderKanban() {
         const colKey = el.dataset.col;
         if (colKey) {
             scrollPositions.set(colKey, el.scrollTop);
+        }
+    });
+
+    // Clean up Pragmatic Drag and Drop instances before clearing DOM
+    // This prevents memory leaks from orphaned event listeners
+    boardEl.querySelectorAll('.dropZone').forEach(dropZone => {
+        // Call cleanup functions for drop targets
+        if (dropZone._cleanupFns) {
+            dropZone._cleanupFns.forEach(cleanup => cleanup());
+            dropZone._cleanupFns = [];
+        }
+    });
+
+    // Clean up draggable instances on cards
+    boardEl.querySelectorAll('.card').forEach(card => {
+        if (card._cleanup) {
+            card._cleanup();
+            card._cleanup = null;
         }
     });
 
@@ -923,22 +1014,16 @@ function renderKanban() {
             el.setAttribute('role', 'button');
             el.setAttribute('aria-label', `Issue: ${escapeHtml(card.title)}`);
 
-            el.addEventListener("click", () => openDetail(card));
-
-            // Keyboard navigation: Enter and Space to open detail
-            el.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openDetail(card);
-                }
-            });
+            // Event listeners are now handled via event delegation on boardEl (see setupBoardEventDelegation)
+            // This prevents memory leaks from re-attaching listeners on every render
 
             const badges = [];
-            badges.push({ text: `P${card.priority}`, cls: `badge-priority-${card.priority}` });
+            // Sanitize all class names to prevent injection
+            badges.push({ text: `P${card.priority}`, cls: sanitizeClassName(`badge-priority-${card.priority}`) });
             if (card.issue_type) {
                 badges.push({
                     text: card.issue_type,
-                    cls: `badge-type-${card.issue_type}`
+                    cls: sanitizeClassName(`badge-type-${card.issue_type}`)
                 });
             }
             // Assignee badge positioned right after type
@@ -994,11 +1079,13 @@ function renderKanban() {
                 </div>`;
             }
 
-            el.innerHTML = `
+            // Apply DOMPurify to all innerHTML content for defense-in-depth
+            const htmlContent = `
         ${parentHtml}
         <div class="cardTitle">${escapeHtml(card.title)}</div>
-        <div class="badges">${badges.map(b => `<span class="badge ${b.cls || ''}">${escapeHtml(b.text)}</span>`).join("")}</div>
+        <div class="badges">${badges.map(b => `<span class="badge ${sanitizeClassName(b.cls || '')}">${escapeHtml(b.text)}</span>`).join("")}</div>
       `;
+            el.innerHTML = DOMPurify.sanitize(htmlContent, purifyConfig);
 
             // Make card draggable (unless in read-only mode)
             if (!readOnly) {
@@ -1308,7 +1395,8 @@ function renderTable() {
         </div>
     `;
 
-    boardEl.innerHTML = tableHtml;
+    // Apply DOMPurify to table HTML for defense-in-depth
+    boardEl.innerHTML = DOMPurify.sanitize(tableHtml, purifyConfig);
 
     // Add page size selector handler
     const pageSizeSelect = document.getElementById('pageSizeSelect');
@@ -1390,17 +1478,21 @@ function renderTable() {
             });
         });
 
-        // Close dropdown when clicking outside (add listener only once)
-        if (!columnPickerDocListenerAdded) {
-            document.addEventListener('click', (e) => {
-                const dropdown = document.getElementById('columnPickerDropdown');
-                const btn = document.getElementById('columnPickerBtn');
-                if (dropdown && !dropdown.contains(e.target) && e.target !== btn) {
-                    dropdown.style.display = 'none';
-                }
-            });
-            columnPickerDocListenerAdded = true;
+        // Close dropdown when clicking outside
+        // Remove old listener if it exists, then add new one
+        if (columnPickerDocListener) {
+            document.removeEventListener('click', columnPickerDocListener);
         }
+
+        columnPickerDocListener = (e) => {
+            const dropdown = document.getElementById('columnPickerDropdown');
+            const btn = document.getElementById('columnPickerBtn');
+            if (dropdown && !dropdown.contains(e.target) && e.target !== btn) {
+                dropdown.style.display = 'none';
+            }
+        };
+
+        document.addEventListener('click', columnPickerDocListener);
     }
 
     // Add click handlers to table rows
@@ -1562,13 +1654,11 @@ repoMenuBtn.addEventListener("click", () => {
     toast("Opening repository selector...");
 });
 
-// Create debounced render function for filter changes (300ms delay)
-const debouncedRender = debounce(render, 300);
-
-filterPriority.addEventListener("change", render); // Immediate for dropdown
-filterType.addEventListener("change", render); // Immediate for dropdown
-// Status filter now handled by custom dropdown logic above
-filterSearch.addEventListener("input", debouncedRender); // Debounced for text input
+// Apply debouncing to all filter changes to prevent excessive re-renders
+filterPriority.addEventListener("change", debouncedRender);
+filterType.addEventListener("change", debouncedRender);
+// Status filter uses debouncedRender in checkbox handler (line 137)
+filterSearch.addEventListener("input", debouncedRender);
 
 // Clear all filters
 clearFiltersBtn.addEventListener("click", () => {
@@ -1639,10 +1729,16 @@ document.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("message", (event) => {
+    // Defense-in-depth: Validate message source in webview context
+    // In VS Code webviews, messages should come from the extension host
+    // This check provides an additional security layer beyond VS Code's sandboxing
+    if (event.source && event.source !== window && event.source !== window.parent) {
+        console.warn('Received message from unexpected source, ignoring');
+        return;
+    }
 
     const msg = event.data;
     if (!msg || !msg.type) {
-
         return;
     }
 
@@ -2061,8 +2157,9 @@ async function openDetail(card) {
                                 <button id="btnAddChild" class="btn" style="padding: 2px 8px; flex-shrink: 0;">Add</button>
                           </div>
     `;
-    
-    form.innerHTML = `
+
+    // Apply DOMPurify to form content for defense-in-depth against XSS
+    const formContent = `
         <div class="form-container">
             <h3 class="form-section-header">${isCreateMode ? 'Create New Issue' : `Edit Issue <span style="color: var(--muted); font-weight: normal; font-size: 14px;">${escapeHtml(card.id)}</span>`}</h3>
             
@@ -2256,6 +2353,9 @@ async function openDetail(card) {
         </div>
     `;
 
+    // Sanitize form HTML content with DOMPurify before setting innerHTML
+    form.innerHTML = DOMPurify.sanitize(formContent, purifyConfig);
+
     detailDirty = false;
     const markDirty = () => { detailDirty = true; };
     const dirtyFieldIds = [
@@ -2376,11 +2476,12 @@ async function openDetail(card) {
 
     /**
      * Safely render markdown with size limits to prevent DoS
+     * Aligned with schema validation (IssueCreateSchema/IssueUpdateSchema in types.ts)
      * @param {string} text - The markdown text to render
      * @returns {string} - Sanitized HTML or error message if too large
      */
     function safeRenderMarkdown(text) {
-        const MAX_MARKDOWN_SIZE = 100000; // 100KB limit
+        const MAX_MARKDOWN_SIZE = 10000; // 10KB limit (matches backend validation)
         if (!text) return '';
         if (text.length > MAX_MARKDOWN_SIZE) {
             return `<div class="error" style="color: var(--error); padding: 8px; background: rgba(255,0,0,0.1); border-radius: 4px;">
@@ -2408,7 +2509,8 @@ async function openDetail(card) {
     function refreshCommentsDisplay() {
         const list = form.querySelector("#commentsList");
         if (!list) return;
-        list.innerHTML = renderCommentsList();
+        // Apply DOMPurify for defense-in-depth
+        list.innerHTML = DOMPurify.sanitize(renderCommentsList(), purifyConfig);
     }
 
     const btnPostComment = form.querySelector("#btnPostComment");
@@ -2466,12 +2568,14 @@ async function openDetail(card) {
             return;
         }
 
-        labelsContainer.innerHTML = labels.map(l => `
+        // Apply DOMPurify for defense-in-depth
+        const labelsHtml = labels.map(l => `
             <span class="badge" style="background: var(--bg2); padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px;">
                 #${escapeHtml(l)}
                 <span class="remove-label" data-label="${escapeHtml(l)}" style="cursor: pointer; opacity: 0.7;">&times;</span>
             </span>
         `).join('');
+        labelsContainer.innerHTML = DOMPurify.sanitize(labelsHtml, purifyConfig);
         
         // Re-attach remove handlers
         labelsContainer.querySelectorAll(".remove-label").forEach(btn => {
@@ -2598,7 +2702,8 @@ async function openDetail(card) {
     function refreshStructureSection() {
         const structure = form.querySelector("#structureSection");
         if (!structure) return;
-        structure.innerHTML = renderStructureSection();
+        // Apply DOMPurify for defense-in-depth
+        structure.innerHTML = DOMPurify.sanitize(renderStructureSection(), purifyConfig);
         bindStructureEvents();
     }
 

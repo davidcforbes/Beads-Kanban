@@ -80,10 +80,23 @@ export class DaemonManager {
       throw error;
     }
     
-    // Additional check: ensure path doesn't contain dangerous characters
-    // While cwd is relatively safe, this prevents edge cases
+    // Additional security checks: ensure path doesn't contain dangerous characters
+    // While cwd is relatively safe, these checks provide defense-in-depth
+
+    // Block shell metacharacters
     if (/[;&|`$()]/.test(normalized)) {
-      throw new Error('Invalid workspace root: path contains potentially dangerous characters');
+      throw new Error('Invalid workspace root: path contains shell metacharacters');
+    }
+
+    // Block control characters (including newlines) that could enable injection
+    if (/[\0-\x1F\x7F]/.test(normalized)) {
+      throw new Error('Invalid workspace root: path contains control characters');
+    }
+
+    // Prevent path traversal by checking for .. sequences
+    // Note: path.resolve() already normalizes, but this is defense-in-depth
+    if (normalized.includes('..')) {
+      throw new Error('Invalid workspace root: path traversal sequences not allowed');
     }
     
     this.workspaceRoot = normalized;
