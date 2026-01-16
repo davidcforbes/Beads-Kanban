@@ -89,15 +89,27 @@ function sanitizeForCSV(text: string): string {
  * Validates markdown content in all cards before sending to webview.
  * Logs warnings for suspicious content but does not block sending.
  * This is a defense-in-depth measure - webview still uses DOMPurify.
+ * Async and chunked to prevent blocking the event loop on large datasets.
  */
-function validateBoardCards(cards: BoardCard[], output: vscode.OutputChannel): void {
-  for (const card of cards) {
-    validateMarkdownFields({
-      description: card.description,
-      acceptance_criteria: card.acceptance_criteria,
-      design: card.design,
-      notes: card.notes
-    }, output);
+async function validateBoardCards(cards: BoardCard[], output: vscode.OutputChannel): Promise<void> {
+  const CHUNK_SIZE = 50;
+  for (let i = 0; i < cards.length; i += CHUNK_SIZE) {
+    const chunk = cards.slice(i, i + CHUNK_SIZE);
+    
+    // Process chunk synchronously
+    for (const card of chunk) {
+      validateMarkdownFields({
+        description: card.description,
+        acceptance_criteria: card.acceptance_criteria,
+        design: card.design,
+        notes: card.notes
+      }, output);
+    }
+    
+    // Yield to event loop to prevent freezing UI
+    if (i + CHUNK_SIZE < cards.length) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 }
 
@@ -464,7 +476,7 @@ export function activate(context: vscode.ExtensionContext) {
           for (const column of Object.keys(columnDataMap)) {
             const columnCards = columnDataMap[column as BoardColumnKey]?.cards;
             if (columnCards && columnCards.length > 0) {
-              validateBoardCards(columnCards, output);
+              await validateBoardCards(columnCards, output);
             }
           }
 
@@ -482,7 +494,7 @@ export function activate(context: vscode.ExtensionContext) {
           output.appendLine(`[Extension] Got board data: ${data.cards?.length || 0} cards`);
           
           // Validate markdown content in all cards (defense-in-depth)
-          validateBoardCards(data.cards || [], output);
+          await validateBoardCards(data.cards || [], output);
           // Check cancellation before posting to prevent race with disposal
           if (!cancellationToken.cancelled) {
             post({ type: "board.data", requestId, payload: data });
@@ -603,7 +615,7 @@ export function activate(context: vscode.ExtensionContext) {
         const result = await adapter.getTableData(filters, sorting, offset, limit);
 
         // Validate markdown content in returned cards (defense-in-depth)
-        validateBoardCards(result.cards, output);
+        await validateBoardCards(result.cards, output);
 
         output.appendLine(`[Extension] Loaded ${result.cards.length} cards for table (${offset}-${offset + result.cards.length}/${result.totalCount})`);
 

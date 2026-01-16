@@ -9,6 +9,28 @@ import { sanitizeError } from "./sanitizeError";
 
 // sanitizeError is now imported from ./sanitizeError
 
+class Mutex {
+    private _queue: { resolve: () => void }[] = [];
+    private _locked = false;
+
+    acquire(): Promise<void> {
+        if (!this._locked) {
+            this._locked = true;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => this._queue.push({ resolve }));
+    }
+
+    release(): void {
+        if (this._queue.length > 0) {
+            const next = this._queue.shift();
+            next?.resolve();
+        } else {
+            this._locked = false;
+        }
+    }
+}
+
 export class BeadsAdapter {
   private db: Database | null = null;
   private dbPath: string | null = null;
@@ -20,7 +42,7 @@ export class BeadsAdapter {
   private lastKnownMtime = 0; // Track file modification time to detect external changes
 
   // Lock for save operations to prevent race conditions
-  private saveLock = false;
+  private saveMutex = new Mutex();
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -193,20 +215,8 @@ export class BeadsAdapter {
    * 3. No dirty data is lost when reloading from disk
    */
   private async flushPendingSaves(): Promise<void> {
-    // Wait for save lock to prevent race conditions
-    const MAX_LOCK_WAIT_MS = 10000; // 10 seconds max wait
-    const startWait = Date.now();
-    while (this.saveLock) {
-      if (Date.now() - startWait > MAX_LOCK_WAIT_MS) {
-        this.output.appendLine('[BeadsAdapter] WARNING: Save lock timeout - forcing lock release');
-        this.saveLock = false;
-        break;
-      }
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-
     // Acquire lock
-    this.saveLock = true;
+    await this.saveMutex.acquire();
     try {
       // Cancel any scheduled save and execute immediately if needed
       if (this.saveTimeout) {
@@ -216,18 +226,18 @@ export class BeadsAdapter {
 
       // If we have dirty data and aren't currently saving, save now
       if (this.isDirty && !this.isSaving) {
-      this.isDirty = false;
-      this.isSaving = true;
-      try {
-        this.save();
-      } catch (error) {
-        // If save failed, mark as dirty again
-        this.isDirty = true;
-        throw error; // Re-throw to prevent reload after failed save
-      } finally {
-        this.isSaving = false;
+        this.isDirty = false;
+        this.isSaving = true;
+        try {
+          this.save();
+        } catch (error) {
+          // If save failed, mark as dirty again
+          this.isDirty = true;
+          throw error; // Re-throw to prevent reload after failed save
+        } finally {
+          this.isSaving = false;
+        }
       }
-    }
 
       // If save is in progress (shouldn't happen but be defensive), wait for it with timeout
       let saveWaitAttempts = 0;
@@ -246,7 +256,7 @@ export class BeadsAdapter {
       this.output.appendLine('[BeadsAdapter] Pending saves flushed successfully');
     } finally {
       // Always release lock
-      this.saveLock = false;
+      this.saveMutex.release();
     }
   }
 

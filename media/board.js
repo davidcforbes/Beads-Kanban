@@ -764,6 +764,14 @@ function renderKanban() {
         }
     }
 
+    // Capture scroll positions before clearing
+    const scrollPositions = new Map();
+    boardEl.querySelectorAll('.dropZone').forEach(el => {
+        const colKey = el.dataset.col;
+        if (colKey) {
+            scrollPositions.set(colKey, el.scrollTop);
+        }
+    });
 
     boardEl.innerHTML = "";
     for (const col of columns) {
@@ -1031,6 +1039,14 @@ function renderKanban() {
             
             loadMoreDiv.appendChild(btn);
             dropZone.appendChild(loadMoreDiv);
+        }
+
+        // Restore scroll position for this column
+        if (scrollPositions.has(col.key)) {
+            // Use setTimeout to ensure DOM is fully rendered before scrolling
+            setTimeout(() => {
+                dropZone.scrollTop = scrollPositions.get(col.key);
+            }, 0);
         }
 
         colWrap.appendChild(header);

@@ -80,7 +80,7 @@ suite('Message Validation Tests', () => {
     });
     test('IssueUpdateSchema: Valid update passes', () => {
         const validUpdate = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             updates: {
                 title: 'Updated Title',
                 priority: 1
@@ -99,7 +99,7 @@ suite('Message Validation Tests', () => {
     });
     test('IssueUpdateSchema: Rejects description over 10000 chars', () => {
         const invalidUpdate = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             updates: {
                 description: 'A'.repeat(10001)
             }
@@ -109,7 +109,7 @@ suite('Message Validation Tests', () => {
     });
     test('CommentAddSchema: Valid comment passes', () => {
         const validComment = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             text: 'This is a comment',
             author: 'User'
         };
@@ -118,7 +118,7 @@ suite('Message Validation Tests', () => {
     });
     test('CommentAddSchema: Rejects empty text', () => {
         const invalidComment = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             text: '',
             author: 'User'
         };
@@ -127,7 +127,7 @@ suite('Message Validation Tests', () => {
     });
     test('LabelSchema: Valid label passes', () => {
         const validLabel = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             label: 'bug'
         };
         const result = types_1.LabelSchema.safeParse(validLabel);
@@ -135,7 +135,7 @@ suite('Message Validation Tests', () => {
     });
     test('LabelSchema: Rejects label over 100 chars', () => {
         const invalidLabel = {
-            id: 'agent.native.activity.layer.beads-1',
+            id: 'beads-kanban-1',
             label: 'A'.repeat(101)
         };
         const result = types_1.LabelSchema.safeParse(invalidLabel);
@@ -143,8 +143,8 @@ suite('Message Validation Tests', () => {
     });
     test('DependencySchema: Valid dependency passes', () => {
         const validDep = {
-            id: 'agent.native.activity.layer.beads-1',
-            otherId: 'agent.native.activity.layer.beads-2',
+            id: 'beads-kanban-1',
+            otherId: 'beads-kanban-2',
             type: 'blocks'
         };
         const result = types_1.DependencySchema.safeParse(validDep);
@@ -152,8 +152,8 @@ suite('Message Validation Tests', () => {
     });
     test('DependencySchema: Rejects invalid type', () => {
         const invalidDep = {
-            id: 'agent.native.activity.layer.beads-1',
-            otherId: 'agent.native.activity.layer.beads-2',
+            id: 'beads-kanban-1',
+            otherId: 'beads-kanban-2',
             type: 'invalid-type'
         };
         const result = types_1.DependencySchema.safeParse(invalidDep);

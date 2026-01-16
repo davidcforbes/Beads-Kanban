@@ -17,6 +17,7 @@ This document defines the testing strategy and the concrete test plan for the VS
 ### Scope
 
 In scope:
+
 - Extension activation, webview messaging, and command handling.
 - BeadsAdapter DB reads/writes and save behavior.
 - DaemonManager status/actions and daemon adapter behavior.
@@ -24,6 +25,7 @@ In scope:
 - Read-only mode.
 
 Out of scope:
+
 - bd daemon correctness or performance.
 - sql.js internal behavior.
 - VS Code host behavior.
@@ -56,6 +58,7 @@ Out of scope:
 ### Risk-Based Priorities
 
 Highest priority:
+
 - Status transitions in detail dialog, including closed_at behavior.
 - Update payload correctness (status, external_ref, notes/dates).
 - DB reload behavior when external processes modify the DB.
@@ -63,11 +66,13 @@ Highest priority:
 - Daemon adapter board load with large issue counts.
 
 Medium priority:
+
 - Dependency removal and relationship integrity.
 - Date handling (timezone shifts).
 - Webview input sanitization and ID rendering safety.
 
 Lower priority:
+
 - UI polish and non-blocking usability issues.
 
 ## Test Plan
@@ -83,6 +88,7 @@ npm test
 ```
 
 If tests require a seeded `.beads` DB:
+
 - Ensure `.beads` exists in the workspace root.
 - Ensure a test DB is present and has the expected schema.
 
@@ -113,22 +119,22 @@ If tests require a seeded `.beads` DB:
    - Add/remove parent-child and blocks dependencies.
    - Verify blocked_by/blocks/children are rendered correctly.
 
-4. **Comments and Markdown Rendering**
+5. **Comments and Markdown Rendering**
    - Add comments with markdown and links.
    - Verify sanitization and rendering.
 
-5. **Context Actions**
+6. **Context Actions**
    - Add to Chat and Copy Context work end-to-end.
    - Large text payloads are rejected with clear feedback.
 
-6. **Read-only Mode**
+7. **Read-only Mode**
    - Enable `beadsKanban.readOnly` and verify all mutations are blocked with clear feedback.
 
-7. **Daemon Adapter Mode**
+8. **Daemon Adapter Mode**
    - Enable `beadsKanban.useDaemonAdapter` and confirm board loads.
    - Create/update/move/labels/deps/comments work via `bd`.
 
-8. **Daemon Actions**
+9. **Daemon Actions**
    - Show status, list daemons, health check, restart/stop, logs.
    - Validate status bar text reflects actual daemon state.
 

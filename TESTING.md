@@ -19,7 +19,7 @@ The extension includes comprehensive performance testing infrastructure to ensur
 Three test databases with realistic data are available for performance testing:
 
 | Database | Issues | Size | Labels | Dependencies | Comments |
-|----------|--------|------|--------|--------------|----------|
+| ---------- | -------- | ------ | -------- | -------------- | ---------- |
 | test-db-1k.db | 1,000 | 0.69 MB | ~1,100 | ~105 | ~755 |
 | test-db-10k.db | 10,000 | 6.16 MB | ~10,900 | ~966 | ~7,550 |
 | test-db-50k.db | 50,000 | 30.62 MB | ~55,000 | ~4,800 | ~37,700 |
@@ -27,6 +27,7 @@ Three test databases with realistic data are available for performance testing:
 ### Distribution
 
 Test databases follow a realistic distribution:
+
 - **30%** Ready (open, no blockers)
 - **25%** In Progress
 - **10%** Blocked (has blocking dependencies)
@@ -39,11 +40,13 @@ Test databases follow a realistic distribution:
 Generates SQLite databases with realistic test data for performance testing.
 
 **Usage:**
+
 ```bash
 node scripts/generate-test-db.js [count] [output]
 ```
 
 **Examples:**
+
 ```bash
 # Generate 1,000 issue database
 node scripts/generate-test-db.js 1000 test-db-1k.db
@@ -56,6 +59,7 @@ node scripts/generate-test-db.js 50000 test-db-50k.db
 ```
 
 **Features:**
+
 - Creates complete SQLite schema with all tables and views
 - Generates realistic titles, descriptions, and metadata
 - Assigns random priorities, types, and assignees
@@ -65,6 +69,7 @@ node scripts/generate-test-db.js 50000 test-db-50k.db
 - Fast generation using batch inserts (50K issues in ~1.2s)
 
 **Generated Data:**
+
 - **Issue Types:** task, bug, feature, epic, chore
 - **Priorities:** 0-4 (weighted toward P2)
 - **Assignees:** alice, bob, charlie, diana, and unassigned
@@ -78,11 +83,13 @@ node scripts/generate-test-db.js 50000 test-db-50k.db
 Measures loading performance, memory usage, and query performance for both sql.js and daemon adapters.
 
 **Usage:**
+
 ```bash
 node --expose-gc scripts/benchmark-loading.js [database-path]
 ```
 
 **Examples:**
+
 ```bash
 # Benchmark 10K database
 node --expose-gc scripts/benchmark-loading.js test-databases/test-db-10k.db
@@ -92,6 +99,7 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 ```
 
 **Metrics Measured:**
+
 1. **Database Load Time** - Time to load SQLite database into memory
 2. **Initial Board Query** - Time to query all issues (legacy full load)
 3. **Column Query (limit 100)** - Time to load first 100 issues from a column
@@ -103,11 +111,13 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 9. **Database Save** - Time to export database to buffer
 
 **Memory Metrics:**
+
 - Heap used (MB)
 - RSS (Resident Set Size) (MB)
 - Memory delta between operations
 
 **Output:**
+
 - Console output with detailed timing and memory usage
 - Markdown report in `benchmark-results/` directory
 
@@ -116,7 +126,7 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 ### Performance Targets (10K Database)
 
 | Metric | Target | Actual | Status |
-|--------|--------|--------|--------|
+| -------- | -------- | -------- | -------- |
 | Initial Load Time | < 3000 ms | 14.76 ms | ✅ |
 | Initial Query Time | < 3000 ms | 135.72 ms | ✅ |
 | Load More Time | < 500 ms | 5.67 ms | ✅ |
@@ -130,6 +140,7 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 #### 1K Database (0.69 MB)
 
 **sql.js Adapter:**
+
 - Database Load: 13.59 ms
 - Initial Board Query (1,000 issues): 40.18 ms
 - Column Query (100 issues): 3.50 ms
@@ -144,6 +155,7 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 #### 10K Database (6.16 MB)
 
 **sql.js Adapter:**
+
 - Database Load: 14.76 ms
 - Initial Board Query (10,000 issues): 135.72 ms
 - Column Query (100 issues): 7.14 ms
@@ -158,6 +170,7 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 #### 50K Database (30.62 MB)
 
 **sql.js Adapter:**
+
 - Database Load: 25.52 ms
 - Initial Board Query (50,000 issues): 550.33 ms
 - Column Query (100 issues): 28.98 ms
@@ -200,18 +213,21 @@ node --expose-gc scripts/benchmark-loading.js test-databases/test-db-50k.db
 ### Before/After Comparison
 
 **Before Incremental Loading (10K database, simulated):**
+
 - Initial load: ~2,500 ms (200+ sequential bd CLI calls)
 - Memory usage: ~150 MB (all issues in memory)
 - UI responsiveness: Blocked during initial load
 - Closed column: Always loaded (slow for many closed issues)
 
 **After Incremental Loading (10K database, actual):**
+
 - Initial load: ~150 ms (3 columns, 100 issues each)
 - Memory usage: ~23 MB (only loaded issues in memory)
 - UI responsiveness: Smooth, no blocking
 - Closed column: Lazy loaded on demand
 
 **Improvement:**
+
 - **16x faster** initial load
 - **85% less** memory usage
 - **100%** responsive UI
@@ -224,7 +240,7 @@ The project includes several integration test scripts to validate adapter behavi
 ### Test Scripts
 
 | Script | Purpose | Command |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `test-adapter-integration.js` | Test DaemonBeadsAdapter field mapping | `npm run test:adapter` |
 | `test-bd-cli.js` | Test bd CLI integration | `npm run test:bd-cli` |
 | `test-message-validation.js` | Test Zod validation schemas | `npm run test:validation` |
@@ -268,6 +284,7 @@ npm run test:coverage
 ### Testing Best Practices
 
 1. **Always run benchmarks after performance changes**
+
    ```bash
    node --expose-gc scripts/benchmark-loading.js test-databases/test-db-10k.db
    ```

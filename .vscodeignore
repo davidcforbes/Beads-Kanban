@@ -12,3 +12,39 @@ node_modules/**/.github/**
 .DS_Store
 *.log
 .beads/**
+
+# Documentation & Specs
+AGENTS.md
+ARCHITECTURE_PROPOSAL_FAST_LOADING.md
+COMPREHENSIVE_TEST_PLAN.md
+CONTRIBUTING.md
+GEMINI.md
+SECURITY_REVIEW.md
+TESTING_STRATEGY.md
+TESTING.md
+# Keep CHANGELOG.md, README.md, and LICENSE
+
+# Build & Test Config
+.vscode-test.mjs
+.gitignore
+.gitattributes
+.vscodeignore
+tsconfig.json
+inspect_schema.js
+*.py
+
+# Test Data & Results
+benchmark-results/**
+test-databases/**
+.serena/**
+.Archive/**
+
+# Scripts (unless runtime required, usually built into out/)
+scripts/**
+
+# Source Images (keep images/ used by README/icon)
+Beads-Kanban-Logo.png
+Beads-Kanban-Logo2.png
+
+# Output
+out/test/**

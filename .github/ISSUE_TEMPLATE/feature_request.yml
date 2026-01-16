@@ -1,0 +1,112 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for Beads Kanban
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please fill out the information below to help us understand your proposal.
+
+  - type: checkboxes
+    id: pre-checks
+    attributes:
+      label: Pre-submission Checks
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched existing issues and discussions to ensure this hasn't been suggested
+          required: true
+        - label: I am using the latest version of Beads Kanban
+          required: true
+        - label: This feature aligns with the project's goals (Beads issue management in VS Code)
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What limitation or pain point are you experiencing?
+      placeholder: Currently, I have to manually sort issues by priority every time I open the board...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this feature work? Describe the desired behavior and user experience.
+      placeholder: |
+        Add a "Default Sort" setting that allows users to configure:
+        - Sort column (priority, created date, etc.)
+        - Sort direction (ascending/descending)
+        - This setting should persist across sessions
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches or solutions have you considered?
+      placeholder: I considered using browser bookmarks with query parameters, but that's not ideal...
+
+  - type: textarea
+    id: benefits
+    attributes:
+      label: User Benefits
+      description: How would this feature benefit you and other users?
+      placeholder: |
+        - Saves time by automatically showing issues in preferred order
+        - Reduces cognitive load when managing large issue lists
+        - Makes the tool more efficient for power users
+    validations:
+      required: true
+
+  - type: dropdown
+    id: user-type
+    attributes:
+      label: User Type
+      description: Which type of user would benefit most from this feature?
+      options:
+        - Individual developer
+        - Team lead / Project manager
+        - Open source maintainer
+        - All users
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to your workflow?
+      options:
+        - Critical - Blocking my workflow
+        - High - Significant improvement
+        - Medium - Nice to have
+        - Low - Minor enhancement
+    validations:
+      required: true
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or Examples
+      description: Include screenshots, mockups, or links to similar features in other tools
+      placeholder: Drag and drop images here or paste URLs
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, use cases, or implementation notes
+      placeholder: This would work well with the existing table view filters...
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you like to work on implementing this feature?
+      options:
+        - label: I would like to work on implementing this feature
+        - label: I can help with testing and feedback

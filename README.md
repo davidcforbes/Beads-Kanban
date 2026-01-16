@@ -2,63 +2,73 @@
 
 A visual Kanban board VS Code extension for managing [Beads](https://github.com/steveyegge/beads) issues directly in your editor. View, create, edit, and organize your `.beads` issues with an intuitive drag-and-drop interface.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Screenshots
 
 ### Kanban View
+
 Drag-and-drop cards between columns to manage your workflow.
 
-![Kanban View](images/screenshots/kanban-view.jpg)
+![Kanban View](https://raw.githubusercontent.com/davidcforbes/beads-kanban/main/images/screenshots/kanban-view.jpg)
 
 ### Table View
+
 Sort, filter, and customize columns for detailed issue management.
 
-![Table View](images/screenshots/table-view.jpg)
+![Table View](https://raw.githubusercontent.com/davidcforbes/beads-kanban/main/images/screenshots/table-view.jpg)
 
 ### Edit Issue Form
+
 Comprehensive issue editing with all metadata fields, dependencies, and comments.
 
-![Edit Form](images/screenshots/edit-form.jpg)
+![Edit Form](https://raw.githubusercontent.com/davidcforbes/beads-kanban/main/images/screenshots/edit-form.jpg)
 
 ## Features
 
 ✨ **Visual Kanban Board**
+
 - Drag-and-drop cards between columns (Ready, In Progress, Blocked, Closed)
 - Real-time updates with your `.beads` database
 - Incremental loading for large issue databases (10,000+ issues)
 
 📊 **Table View**
+
 - Sortable columns with multi-column sorting (Shift+Click)
 - Customizable column visibility
 - Pagination with configurable page sizes
 - Filter by priority, type, status, and search
 
 🔧 **Full Issue Management**
+
 - Create, edit, and update issues
 - Add comments, labels, and dependencies
 - Markdown support with live preview
 - Rich metadata fields (priority, assignee, estimated time, etc.)
 
 ⚡ **Dual Adapter Support**
+
 - **sql.js adapter**: In-memory SQLite for fast local operations
 - **Daemon adapter**: Uses `bd` CLI for advanced features
 
 ## Installation
 
 ### From VSIX (Recommended)
+
 1. Download the latest `.vsix` file from [Releases](https://github.com/davidcforbes/beads-kanban/releases)
 2. In VS Code: `Extensions > ... > Install from VSIX...`
 3. Select the downloaded file
 4. Reload VS Code
 
 ### From Marketplace (Coming Soon)
+
 Search for "Beads Kanban" in the VS Code Extensions marketplace.
 
 ## Quick Start
 
 1. **Initialize Beads in your project** (if not already done):
+
    ```bash
    bd init
    ```
@@ -82,7 +92,7 @@ Beads is an AI-native issue tracking system that lives directly in your codebase
 ## Configuration
 
 | Setting | Default | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | `beadsKanban.readOnly` | `false` | Enable read-only mode (no edits) |
 | `beadsKanban.useDaemonAdapter` | `false` | Use `bd` daemon instead of in-memory adapter |
 | `beadsKanban.initialLoadLimit` | `100` | Issues per column on initial load |
@@ -93,10 +103,12 @@ Beads is an AI-native issue tracking system that lives directly in your codebase
 ## Development
 
 ### Prerequisites
+
 - Node.js 20+
 - VS Code 1.90+
 
 ### Build from Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/davidcforbes/beads-kanban.git
@@ -116,6 +128,7 @@ npx @vscode/vsce package
 ```
 
 ### Development Workflow
+
 1. Press `F5` to launch Extension Development Host
 2. Make changes to source files
 3. Press `Ctrl+Shift+F5` to reload extension
@@ -160,6 +173,7 @@ Contributions are welcome! This is an actively maintained fork where the origina
 5. Open a Pull Request
 
 ### Development Guidelines
+
 - Follow existing code style (use ESLint)
 - Add tests for new features
 - Update documentation as needed
@@ -180,6 +194,8 @@ Original work Copyright (c) 2024 sebcook-ctrl
 
 ---
 
-**Made with ❤️ for the Beads community**
+## Gratitude
+
+Made with ❤️ for the Beads community
 
 Questions? Open an [issue](https://github.com/davidcforbes/beads-kanban/issues) or start a [discussion](https://github.com/davidcforbes/beads-kanban/discussions)!

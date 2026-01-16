@@ -882,7 +882,10 @@ export class DaemonBeadsAdapter {
           // Use bd ready - it returns issues with no blockers
           // LIMITATION: bd ready doesn't support --offset, so we fetch offset+limit and slice
           // This means for offset=100, limit=50, we fetch 150 rows and discard the first 100
-          // This is inefficient but necessary until bd CLI adds --offset support
+          // This is inefficient but necessary until bd CLI adds --offset support.
+          // This creates O(N) performance degradation where N is the page number.
+          // Upstream issue needed: Add --offset support to bd list/ready commands.
+          // Mitigation: The result is sliced in memory below.
           if (offset > 500) {
             this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for ready column may cause performance issues`);
           }
@@ -893,7 +896,7 @@ export class DaemonBeadsAdapter {
         case 'in_progress':
           // Use bd list with status filter
           // LIMITATION: bd list supports --limit but not --offset
-          // TODO: Add --offset flag to bd CLI for efficient pagination (see beads issue agent.native.activity.layer.beads-6u4m)
+          // TODO: Add --offset flag to bd CLI for efficient pagination (see beads issue beads-kanban-6u4m)
           if (offset > 500) {
             this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for in_progress column may cause performance issues`);
           }

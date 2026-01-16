@@ -1,13 +1,13 @@
 # Comprehensive Test Plan - 100% Validation Coverage
 
-**Epic:** agent.native.activity.layer.beads-qzw
+**Epic:** beads-kanban-qzw
 **Goal:** Complete test coverage across all application layers with 100% field validation
 
 ---
 
 ## Test Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Test Coverage Layers                      │
 ├─────────────────────────────────────────────────────────────────┤
@@ -45,6 +45,7 @@
 **Status:** ✅ Complete
 **Script:** `scripts/test-bd-cli.js`
 **Coverage:**
+
 - bd create/update/show/list commands
 - Daemon vs no-daemon behavior
 - DateTime format handling
@@ -56,12 +57,14 @@
 ### 🎯 Layer 2: Core Components (Priority 1)
 
 #### 2.1 Adapter Integration Tests
-**Issue:** agent.native.activity.layer.beads-1jo
+
+**Issue:** beads-kanban-1jo
 **Script:** `scripts/test-adapter-integration.js`
 **Estimate:** 2 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - `DaemonBeadsAdapter.createIssue()` with all field combinations
 - `DaemonBeadsAdapter.updateIssue()` with all field types
 - `DaemonBeadsAdapter.getBoard()` pagination and filtering
@@ -72,6 +75,7 @@
 - Edge cases: null, undefined, empty strings, special characters
 
 **Test Examples:**
+
 ```javascript
 // Test 1: Create with all fields
 const result = await adapter.createIssue({
@@ -111,12 +115,14 @@ assert.strictEqual(updated.status, "in_progress");
 ---
 
 #### 2.2 Message Validation Tests
-**Issue:** agent.native.activity.layer.beads-5m0
+
+**Issue:** beads-kanban-5m0
 **Script:** `scripts/test-message-validation.js`
 **Estimate:** 1.5 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - `IssueCreateSchema` validation (from src/types.ts)
 - `IssueUpdateSchema` validation
 - `CommentAddSchema` validation
@@ -129,6 +135,7 @@ assert.strictEqual(updated.status, "in_progress");
 - XSS/injection attempt rejection
 
 **Test Examples:**
+
 ```javascript
 import { IssueCreateSchema, IssueUpdateSchema } from '../src/types.js';
 
@@ -169,12 +176,14 @@ assert(!result4.success);
 ---
 
 #### 2.3 Extension Message Handlers
-**Issue:** agent.native.activity.layer.beads-4bw
+
+**Issue:** beads-kanban-4bw
 **Script:** `scripts/test-extension-handlers.js`
 **Estimate:** 2.5 hours
 **Dependencies:** 5m0 (Message Validation)
 
 **Test Coverage:**
+
 - All message type handlers from extension.ts
 - Request/response pattern validation
 - Error message formatting
@@ -185,6 +194,7 @@ assert(!result4.success);
 - Cache invalidation
 
 **Test Examples:**
+
 ```javascript
 // Mock vscode API
 const mockWebview = {
@@ -224,12 +234,14 @@ assert(mockWebview.postMessage.calledWith({
 ---
 
 #### 2.4 Field Mapping Validation
-**Issue:** agent.native.activity.layer.beads-ecs
+
+**Issue:** beads-kanban-ecs
 **Script:** `scripts/test-field-mapping.js`
 **Estimate:** 1.5 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - Complete field mapping matrix
 - Database schema → CLI flags
 - CLI flags → Adapter parameters
@@ -239,7 +251,8 @@ assert(mockWebview.postMessage.calledWith({
 - Gap identification
 
 **Output Example:**
-```
+
+```text
 Field Mapping Matrix
 =====================
 
@@ -267,12 +280,14 @@ due_at
 ### 🎯 Layer 3: Integration & Round-trip (Priority 1)
 
 #### 3.1 Round-trip Data Integrity Tests
-**Issue:** agent.native.activity.layer.beads-1q4
+
+**Issue:** beads-kanban-1q4
 **Script:** `scripts/test-roundtrip.js`
 **Estimate:** 2.5 hours
 **Dependencies:** 1jo (Adapter), 5m0 (Message Validation)
 
 **Test Coverage:**
+
 - Complete data flow: Form → Message → Adapter → CLI → DB → Back
 - Date/time format conversions (ISO 8601 → local timezone)
 - Special characters and Unicode
@@ -282,6 +297,7 @@ due_at
 - Array/object serialization (labels, dependencies)
 
 **Test Examples:**
+
 ```javascript
 // Test 1: Date format round-trip
 const formData = {
@@ -321,12 +337,14 @@ assert.strictEqual(card2.description, specialChars.description);
 ### 🎯 Layer 4: UI Layer (Priority 2)
 
 #### 4.1 Webview Form Validation Tests
-**Issue:** agent.native.activity.layer.beads-e82
+
+**Issue:** beads-kanban-e82
 **Script:** `scripts/test-webview-forms.js`
 **Estimate:** 2 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - Form field extraction (media/main.js)
 - Message payload generation
 - Date picker format output
@@ -337,6 +355,7 @@ assert.strictEqual(card2.description, specialChars.description);
 **Note:** Requires JSDOM or similar for testing DOM manipulation.
 
 **Test Examples:**
+
 ```javascript
 // Using JSDOM to test webview JS
 const { JSDOM } = require('jsdom');
@@ -368,12 +387,14 @@ assert.deepEqual(messagePayload, {
 ### 🎯 Layer 5: Quality Assurance (Priority 2)
 
 #### 5.1 Error Scenario Tests
-**Issue:** agent.native.activity.layer.beads-05y
+
+**Issue:** beads-kanban-05y
 **Script:** `scripts/test-error-scenarios.js`
 **Estimate:** 2 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - CLI command failures (exit code 1, EPERM, timeout)
 - Network/daemon unavailable
 - Invalid data rejection
@@ -385,12 +406,14 @@ assert.deepEqual(messagePayload, {
 ---
 
 #### 5.2 Performance and Load Tests
-**Issue:** agent.native.activity.layer.beads-bqq
+
+**Issue:** beads-kanban-bqq
 **Script:** `scripts/test-performance.js`
 **Estimate:** 3 hours
 **Dependencies:** None
 
 **Test Coverage:**
+
 - Board load with 1000+ issues
 - Pagination performance
 - Batch operation efficiency
@@ -404,12 +427,14 @@ assert.deepEqual(messagePayload, {
 ### 🎯 Layer 6: Infrastructure (Priority 1)
 
 #### 6.1 Test Runner and CI Integration
-**Issue:** agent.native.activity.layer.beads-5t6
+
+**Issue:** beads-kanban-5t6
 **Script:** `scripts/run-all-tests.js`
 **Estimate:** 1.5 hours
 **Dependencies:** 1jo, 5m0, 1q4, e82, 4bw, ecs
 
 **Deliverables:**
+
 - Master test runner
 - Combined test reports (JSON + Markdown)
 - GitHub Actions workflow (`.github/workflows/test.yml`)
@@ -420,12 +445,14 @@ assert.deepEqual(messagePayload, {
 ---
 
 #### 6.2 Test Documentation
-**Issue:** agent.native.activity.layer.beads-2l2
+
+**Issue:** beads-kanban-2l2
 **Script:** Creates `TESTING.md`
 **Estimate:** 1 hour
 **Dependencies:** All tests
 
 **Deliverables:**
+
 - TESTING.md comprehensive guide
 - Field mapping matrix table
 - Test execution instructions
@@ -437,34 +464,35 @@ assert.deepEqual(messagePayload, {
 
 ## Test Execution Order
 
-```
+```text
 Phase 1: Core Layer Tests (Parallel)
 ├─ test-bd-cli.js          ✅ (Already complete)
-├─ test-adapter-integration.js    (agent.native.activity.layer.beads-1jo)
-├─ test-message-validation.js     (agent.native.activity.layer.beads-5m0)
-└─ test-field-mapping.js          (agent.native.activity.layer.beads-ecs)
+├─ test-adapter-integration.js    (beads-kanban-1jo)
+├─ test-message-validation.js     (beads-kanban-5m0)
+└─ test-field-mapping.js          (beads-kanban-ecs)
 
 Phase 2: Integration Tests (After Phase 1)
-├─ test-roundtrip.js              (agent.native.activity.layer.beads-1q4)
+├─ test-roundtrip.js              (beads-kanban-1q4)
 │   └─ Depends on: 1jo, 5m0
-└─ test-extension-handlers.js     (agent.native.activity.layer.beads-4bw)
+└─ test-extension-handlers.js     (beads-kanban-4bw)
     └─ Depends on: 5m0
 
 Phase 3: UI and Quality (Parallel with Phase 2)
-├─ test-webview-forms.js          (agent.native.activity.layer.beads-e82)
-├─ test-error-scenarios.js        (agent.native.activity.layer.beads-05y)
-└─ test-performance.js            (agent.native.activity.layer.beads-bqq)
+├─ test-webview-forms.js          (beads-kanban-e82)
+├─ test-error-scenarios.js        (beads-kanban-05y)
+└─ test-performance.js            (beads-kanban-bqq)
 
 Phase 4: Infrastructure (After all tests)
-├─ run-all-tests.js               (agent.native.activity.layer.beads-5t6)
+├─ run-all-tests.js               (beads-kanban-5t6)
 │   └─ Depends on: ALL above tests
-└─ TESTING.md documentation       (agent.native.activity.layer.beads-2l2)
+└─ TESTING.md documentation       (beads-kanban-2l2)
 ```
 
 ---
 
 ## Field Coverage Matrix (Target)
 
+```markdown
 | Field | DB | CLI Flag | Adapter Param | Zod Schema | Webview Form | Status |
 |-------|-------|----------|---------------|------------|--------------|--------|
 | title | ✅ | ✅ create <title>, --title | ✅ title | ✅ z.string() | ✅ #issueTitle | ✅ |
@@ -483,8 +511,10 @@ Phase 4: Infrastructure (After all tests)
 | labels | ✅ | ✅ bd label add | ✅ addLabel() | ✅ LabelSchema | ✅ Label UI | ✅ |
 | dependencies | ✅ | ✅ bd dep add | ✅ addDependency() | ✅ DependencySchema | ✅ Dep UI | ✅ |
 | comments | ✅ | ⚠️ Not in CLI | ✅ addComment() | ✅ CommentAddSchema | ✅ Comment UI | ⚠️ |
+```
 
 **Legend:**
+
 - ✅ Fully mapped and tested
 - ⚠️ Known issue or gap
 - ❌ Not implemented
@@ -529,12 +559,14 @@ Phase 4: Infrastructure (After all tests)
 
 **Total Effort:** ~17.5 hours
 
+```markdown
 | Phase | Tasks | Time |
 |-------|-------|------|
 | Phase 1 | Core layer tests (3 scripts) | 5 hours |
 | Phase 2 | Integration tests (2 scripts) | 5 hours |
 | Phase 3 | UI and quality tests (3 scripts) | 6 hours |
 | Phase 4 | Infrastructure (CI + docs) | 2.5 hours |
+```
 
 ---
 
@@ -542,4 +574,4 @@ Phase 4: Infrastructure (After all tests)
 
 Run `bd ready` to see which test tasks are ready to begin!
 
-Next recommended task: **agent.native.activity.layer.beads-1jo** (Adapter Integration Tests)
+Next recommended task: **beads-kanban-1jo** (Adapter Integration Tests)

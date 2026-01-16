@@ -4,16 +4,32 @@
   "description": "Visual Kanban board for Beads issue tracking - view and manage your .beads issues in VS Code",
   "repository": {
     "type": "git",
-    "url": "https://github.com/davidcforbes/beads-kanban.git"
+    "url": "https://github.com/davidcforbes/beads-kanban"
   },
-  "version": "1.0.0",
-  "publisher": "AgentNativeAbstractionLayer",
+  "author": {
+    "name": "David Forbes",
+    "url": "https://github.com/davidcforbes"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/davidcforbes/beads-kanban",
+  "bugs": "https://github.com/davidcforbes/beads-kanban/issues",
+  "keywords": [
+    "kanban",
+    "issue-tracking",
+    "beads",
+    "project-management",
+    "agile",
+    "visualization"
+  ],
+  "version": "1.0.5",
+  "publisher": "davidcforbes",
   "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
     "onStartupFinished"

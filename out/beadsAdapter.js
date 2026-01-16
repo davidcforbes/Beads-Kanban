@@ -44,6 +44,26 @@ const sql_js_1 = __importDefault(require("sql.js"));
 const vscode = __importStar(require("vscode"));
 const sanitizeError_1 = require("./sanitizeError");
 // sanitizeError is now imported from ./sanitizeError
+class Mutex {
+    _queue = [];
+    _locked = false;
+    acquire() {
+        if (!this._locked) {
+            this._locked = true;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => this._queue.push({ resolve }));
+    }
+    release() {
+        if (this._queue.length > 0) {
+            const next = this._queue.shift();
+            next?.resolve();
+        }
+        else {
+            this._locked = false;
+        }
+    }
+}
 class BeadsAdapter {
     output;
     db = null;
@@ -55,7 +75,7 @@ class BeadsAdapter {
     lastSaveTime = 0;
     lastKnownMtime = 0; // Track file modification time to detect external changes
     // Lock for save operations to prevent race conditions
-    saveLock = false;
+    saveMutex = new Mutex();
     constructor(output) {
         this.output = output;
     }
@@ -212,19 +232,8 @@ class BeadsAdapter {
      * 3. No dirty data is lost when reloading from disk
      */
     async flushPendingSaves() {
-        // Wait for save lock to prevent race conditions
-        const MAX_LOCK_WAIT_MS = 10000; // 10 seconds max wait
-        const startWait = Date.now();
-        while (this.saveLock) {
-            if (Date.now() - startWait > MAX_LOCK_WAIT_MS) {
-                this.output.appendLine('[BeadsAdapter] WARNING: Save lock timeout - forcing lock release');
-                this.saveLock = false;
-                break;
-            }
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
         // Acquire lock
-        this.saveLock = true;
+        await this.saveMutex.acquire();
         try {
             // Cancel any scheduled save and execute immediately if needed
             if (this.saveTimeout) {
@@ -263,7 +272,7 @@ class BeadsAdapter {
         }
         finally {
             // Always release lock
-            this.saveLock = false;
+            this.saveMutex.release();
         }
     }
     async reloadDatabase() {

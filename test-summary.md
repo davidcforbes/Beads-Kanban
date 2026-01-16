@@ -28,6 +28,7 @@
 **Duration:** 34.49s
 
 **Results:**
+
 - Passed: 12
 - Failed: 5
 - Warnings: 0
@@ -42,6 +43,7 @@
 **Duration:** 0.83s
 
 **Results:**
+
 - Passed: 75
 - Failed: 0
 - Warnings: 0
@@ -54,6 +56,7 @@
 **Duration:** 0.64s
 
 **Results:**
+
 - Passed: 6
 - Failed: 0
 - Warnings: 0
@@ -66,6 +69,7 @@
 **Duration:** 176.81s
 
 **Results:**
+
 - Passed: 23
 - Failed: 0
 - Warnings: 0
@@ -96,4 +100,3 @@
 - bd CLI only stores first line of multi-line descriptions
 - Foreign key constraints require existing user for assignee field
 - external_ref field may trigger foreign key constraints in some configurations
-
