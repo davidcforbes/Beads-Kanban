@@ -38,7 +38,7 @@ const vscode = __importStar(require("vscode"));
 const crypto = __importStar(require("crypto"));
 function getWebviewHtml(webview, extensionUri) {
     // Use package version for cache-busting (production-friendly, changes only on updates)
-    const version = "2.0.3";
+    const version = "2.0.4";
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "board.js")) + `?v=${version}`;
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "styles.css")) + `?v=${version}`;
     const dompurifyUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "purify.min.js")) + `?v=${version}`;
