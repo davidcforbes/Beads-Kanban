@@ -993,6 +993,16 @@ main {
     background: rgba(255, 255, 255, 0.08);
 }
 
+.issues-table tbody tr.selected {
+    background: rgba(0, 122, 204, 0.15);
+    border-left: 3px solid var(--vscode-focusBorder);
+}
+
+.issues-table tbody tr:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -2px;
+}
+
 /* Table cell content */
 .table-id {
     font-family: monospace;

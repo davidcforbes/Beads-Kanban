@@ -1671,15 +1671,66 @@ function renderTable() {
         document.addEventListener('click', columnPickerDocListener);
     }
 
-    // Add click handlers to table rows
+    // Add click and keyboard handlers to table rows
     const rows = boardEl.querySelectorAll('.table-row');
+    let selectedRow = null;
+
     for (const row of rows) {
         const cardId = row.dataset.id;
         const card = tableRows.find(c => c.id === cardId);
-        if (card) {
-            row.addEventListener('click', () => openDetail(card));
-            row.style.cursor = 'pointer';
-        }
+        if (!card) continue;
+
+        row.style.cursor = 'pointer';
+        row.setAttribute('tabindex', '0');
+
+        // Single click: select/highlight row
+        row.addEventListener('click', (e) => {
+            // Remove previous selection
+            if (selectedRow) {
+                selectedRow.classList.remove('selected');
+            }
+            // Highlight this row
+            row.classList.add('selected');
+            selectedRow = row;
+            row.focus();
+        });
+
+        // Double-click: open edit form
+        row.addEventListener('dblclick', (e) => {
+            openDetail(card);
+        });
+
+        // Keyboard navigation
+        row.addEventListener('keydown', (e) => {
+            const currentIndex = Array.from(rows).indexOf(row);
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                openDetail(card);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const nextRow = rows[currentIndex + 1];
+                if (nextRow) {
+                    nextRow.click(); // Triggers selection
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prevRow = rows[currentIndex - 1];
+                if (prevRow) {
+                    prevRow.click(); // Triggers selection
+                }
+            } else if (e.key === 'PageDown') {
+                e.preventDefault();
+                // Jump down by ~10 rows (approximately one screen)
+                const targetIndex = Math.min(currentIndex + 10, rows.length - 1);
+                rows[targetIndex]?.click();
+            } else if (e.key === 'PageUp') {
+                e.preventDefault();
+                // Jump up by ~10 rows (approximately one screen)
+                const targetIndex = Math.max(currentIndex - 10, 0);
+                rows[targetIndex]?.click();
+            }
+        });
     }
 
     // Add click handlers to sortable headers
@@ -1688,17 +1739,6 @@ function renderTable() {
         const columnId = header.dataset.columnId;
         header.addEventListener('click', (e) => {
             handleColumnSort(columnId, e.shiftKey);
-        });
-    }
-
-    // Add keyboard navigation for table rows
-    for (const row of rows) {
-        row.setAttribute('tabindex', '0');
-        row.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                row.click();
-            }
         });
     }
 
