@@ -1630,6 +1630,19 @@ export class DaemonBeadsAdapter {
   }
 
   /**
+   * Update the workspace root path (for switching repositories)
+   * @param newWorkspaceRoot New workspace root path
+   */
+  public setWorkspaceRoot(newWorkspaceRoot: string): void {
+    this.workspaceRoot = newWorkspaceRoot;
+    this.output.appendLine(`[DaemonBeadsAdapter] Workspace root changed to: ${newWorkspaceRoot}`);
+    // Reset circuit breaker state for new repository
+    this.circuitBreakerState = 'CLOSED';
+    this.consecutiveFailures = 0;
+    this.cancelCircuitRecovery();
+  }
+
+  /**
    * Cleanup resources
    */
   public dispose(): void {

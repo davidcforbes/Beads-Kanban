@@ -773,15 +773,20 @@ export function activate(context: vscode.ExtensionContext) {
             // Store the selected path in workspace state for future sessions
             await context.workspaceState.update('beadsRepoPath', folderPath);
 
-            // Show info message
-            vscode.window.showInformationMessage(`Switched to repository: ${folderPath}. Please reload the extension to apply changes.`, 'Reload')
-              .then(action => {
-                if (action === 'Reload') {
-                  vscode.commands.executeCommand('workbench.action.reloadWindow');
-                }
-              });
+            // Update the adapter to use the new repository path
+            adapter.setWorkspaceRoot(folderPath);
 
-            post({ type: "mutation.ok", requestId: msg.requestId });
+            // Show info message
+            vscode.window.showInformationMessage(`Switched to repository: ${folderPath}`);
+
+            // Auto-reload the board data with the new repository
+            try {
+              const data = await adapter.getBoard();
+              post({ type: "board.data", requestId: msg.requestId, payload: data });
+            } catch (err) {
+              output.appendLine(`[Extension] Error loading board after repo switch: ${err}`);
+              post({ type: "mutation.error", requestId: msg.requestId, error: "Failed to load new repository" });
+            }
           } catch (err) {
             vscode.window.showErrorMessage(`Selected folder does not contain a .beads directory.`);
             post({ type: "mutation.error", requestId: msg.requestId, error: "No .beads directory found" });
