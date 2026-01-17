@@ -594,8 +594,8 @@ function hideLoading() {
 
 // Configure DOMPurify for safe HTML sanitization
 const purifyConfig = {
-    ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'button', 'label', 'select', 'option', 'input', 'textarea', 'form'],
-    ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'type', 'value', 'selected', 'disabled', 'style', 'data-column-id', 'data-id', 'data-label', 'data-full-id', 'placeholder', 'rows', 'required', 'for'],
+    ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'button', 'label', 'select', 'option', 'input', 'textarea', 'form', 'datalist', 'details', 'summary'],
+    ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'type', 'value', 'selected', 'disabled', 'style', 'data-column-id', 'data-id', 'data-label', 'data-full-id', 'placeholder', 'rows', 'required', 'for', 'checked', 'list', 'name', 'cols', 'open', 'autocomplete'],
     ALLOW_DATA_ATTR: true,
     // Prevent XSS via javascript: URIs - only allow safe protocols
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
@@ -2267,6 +2267,12 @@ async function openDetail(card) {
 
     if (!card) return;
 
+    // Defensive check: ensure dialog exists
+    if (!detDialog) {
+        console.error('Detail dialog element not found');
+        return;
+    }
+
     // Phase 2: Load full issue details if editing existing issue
     const isCreateMode = card.id === null;
     if (!isCreateMode) {
@@ -2283,6 +2289,10 @@ async function openDetail(card) {
 
     // We will dynamically rebuild the form content to support editing
     const form = detDialog.querySelector("form");
+    if (!form) {
+        console.error('Dialog form not found');
+        return;
+    }
 
     // Helper to safe string
     const safe = (s) => escapeHtml(s || "");
