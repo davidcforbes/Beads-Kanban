@@ -20,7 +20,8 @@ import {
   BoardLoadColumnSchema,
   BoardLoadMoreSchema,
   ColumnDataMap,
-  ColumnData
+  ColumnData,
+  IssueIdSchema
 } from "./types";
 
 type WebMsg =
@@ -120,18 +121,32 @@ export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel("Beads Kanban");
   output.appendLine('[BeadsAdapter] Environment Versions: ' + JSON.stringify(process.versions, null, 2));
 
-  // Always use DaemonBeadsAdapter (v2.0+ is daemon-only)
-  const ws = vscode.workspace.workspaceFolders?.[0];
-  if (!ws) {
-    vscode.window.showErrorMessage('Beads Kanban requires an open workspace folder.');
-    return;
-  }
-
-  output.appendLine('[Extension] Using DaemonBeadsAdapter');
-  const adapter = new DaemonBeadsAdapter(ws.uri.fsPath, output);
-
   context.subscriptions.push(output);
-  context.subscriptions.push({ dispose: () => adapter.dispose() });
+
+  // Always use DaemonBeadsAdapter (v2.0+ is daemon-only)
+  let adapter: DaemonBeadsAdapter | null = null;
+  let adapterWorkspaceRoot: string | null = null;
+  let daemonManager: DaemonManager | null = null;
+  let daemonWorkspaceRoot: string | null = null;
+  let statusBarItem: vscode.StatusBarItem | null = null;
+  let updateDaemonStatus: (() => void) | null = null;
+  let autoStartAttempted = false;
+
+  const ensureAdapter = (): DaemonBeadsAdapter | null => {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) {
+      return null;
+    }
+
+    if (!adapter || adapterWorkspaceRoot !== ws.uri.fsPath) {
+      adapter?.dispose();
+      output.appendLine('[Extension] Using DaemonBeadsAdapter');
+      adapter = new DaemonBeadsAdapter(ws.uri.fsPath, output);
+      adapterWorkspaceRoot = ws.uri.fsPath;
+    }
+
+    return adapter;
+  };
 
   // Track active panels and polling state (moved here for accessibility)
   let activePanelCount = 0;
@@ -139,170 +154,206 @@ export function activate(context: vscode.ExtensionContext) {
   let startDaemonPolling: (() => void) | undefined;
   let stopDaemonPolling: (() => void) | undefined;
 
-  // Daemon management setup
-  if (ws) {
-    const daemonManager = new DaemonManager(ws.uri.fsPath, output);
+  const ensureDaemonManager = (): DaemonManager | null => {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) {
+      return null;
+    }
 
-    // Create status bar item
-    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBarItem.text = "$(sync~spin) Beads Daemon";
-    statusBarItem.tooltip = "Checking daemon status...";
-    statusBarItem.command = "beadsKanban.showDaemonActions";
-    statusBarItem.show();
-    context.subscriptions.push(statusBarItem);
+    if (!daemonManager || daemonWorkspaceRoot !== ws.uri.fsPath) {
+      daemonManager = new DaemonManager(ws.uri.fsPath, output);
+      daemonWorkspaceRoot = ws.uri.fsPath;
+      autoStartAttempted = false;
+    }
 
-    // Track auto-start attempts to prevent infinite retry loops
-    let autoStartAttempted = false;
+    if (!statusBarItem) {
+      statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+      statusBarItem.text = "$(sync~spin) Beads Daemon";
+      statusBarItem.tooltip = "Checking daemon status...";
+      statusBarItem.command = "beadsKanban.showDaemonActions";
+      statusBarItem.show();
+      context.subscriptions.push(statusBarItem);
+    }
 
-    // Update daemon status in status bar
-    const updateDaemonStatus = async () => {
-      try {
-        const status = await daemonManager.getStatus();
-        if (status.running && status.healthy) {
-          statusBarItem.text = "$(check) Beads Daemon";
-          statusBarItem.tooltip = `Daemon running${status.pid ? ` (PID ${status.pid})` : ''}`;
-          statusBarItem.backgroundColor = undefined;
-          autoStartAttempted = false; // Reset on successful connection
-        } else if (status.running && !status.healthy) {
-          statusBarItem.text = "$(warning) Beads Daemon";
-          statusBarItem.tooltip = "Daemon unhealthy";
-          statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        } else {
-          // Daemon not running
-          statusBarItem.text = "$(circle-slash) Beads Daemon";
-          statusBarItem.tooltip = "Daemon not running";
-          statusBarItem.backgroundColor = undefined;
-
-          // Auto-start daemon if not running and haven't tried yet
-          if (!autoStartAttempted) {
-            autoStartAttempted = true;
-            output.appendLine('[Extension] Daemon not running, attempting auto-start...');
-            try {
-              await daemonManager.start();
-              output.appendLine('[Extension] Daemon started successfully');
-              // Update status immediately after starting
-              setTimeout(updateDaemonStatus, 1000); // Give daemon time to initialize
-            } catch (startError) {
-              output.appendLine(`[Extension] Failed to auto-start daemon: ${sanitizeError(startError)}`);
-              // Show notification with option to start manually
-              vscode.window.showWarningMessage(
-                'Beads daemon is not running. The extension requires the daemon to be running.',
-                'Start Daemon'
-              ).then(action => {
-                if (action === 'Start Daemon') {
-                  vscode.commands.executeCommand('beadsKanban.showDaemonActions');
-                }
-              });
-            }
-          }
+    if (!updateDaemonStatus) {
+      updateDaemonStatus = async () => {
+        if (!daemonManager || !statusBarItem) {
+          return;
         }
-      } catch (e) {
-        statusBarItem.text = "$(error) Beads Daemon";
-        statusBarItem.tooltip = `Error: ${sanitizeError(e)}`;
-        statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-      }
-    };
-
-    startDaemonPolling = () => {
-      if (pollInterval) return; // Already polling
-      updateDaemonStatus(); // Initial check
-      pollInterval = setInterval(updateDaemonStatus, 10000);
-    };
-
-    stopDaemonPolling = () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-      }
-    };
-
-    // Cleanup on extension deactivation
-    context.subscriptions.push({ dispose: stopDaemonPolling });
-
-    // Register daemon actions command
-    context.subscriptions.push(
-      vscode.commands.registerCommand("beadsKanban.showDaemonActions", async () => {
-        const actions = [
-          { label: "$(info) Show Status", action: "status" },
-          { label: "$(play) Start Daemon", action: "start" },
-          { label: "$(list-tree) List All Daemons", action: "list" },
-          { label: "$(pulse) Check Health", action: "health" },
-          { label: "$(debug-restart) Restart Daemon", action: "restart" },
-          { label: "$(debug-stop) Stop Daemon", action: "stop" },
-          { label: "$(output) View Logs", action: "logs" }
-        ];
-
-        const selected = await vscode.window.showQuickPick(actions, {
-          placeHolder: "Select daemon action"
-        });
-
-        if (!selected) return;
 
         try {
-          switch (selected.action) {
-            case "status": {
-              const status = await daemonManager.getStatus();
-              const msg = status.running
-                ? `Daemon is running${status.pid ? ` (PID ${status.pid})` : ''}`
-                : `Daemon is not running${status.error ? `: ${status.error}` : ''}`;
-              vscode.window.showInformationMessage(msg);
-              break;
-            }
-            case "start": {
-              await daemonManager.start();
-              vscode.window.showInformationMessage("Daemon started");
-              updateDaemonStatus();
-              break;
-            }
-            case "list": {
-              const daemons = await daemonManager.listAllDaemons();
-              if (daemons.length === 0) {
-                vscode.window.showInformationMessage("No daemons running");
-              } else {
-                const list = daemons.map(d => `${d.workspace} (PID ${d.pid}, v${d.version})`).join("\n");
-                vscode.window.showInformationMessage(`Running daemons:\n${list}`);
+          const status = await daemonManager.getStatus();
+          if (status.running && status.healthy) {
+            statusBarItem.text = "$(check) Beads Daemon";
+            statusBarItem.tooltip = `Daemon running${status.pid ? ` (PID ${status.pid})` : ''}`;
+            statusBarItem.backgroundColor = undefined;
+            autoStartAttempted = false; // Reset on successful connection
+          } else if (status.running && !status.healthy) {
+            statusBarItem.text = "$(warning) Beads Daemon";
+            statusBarItem.tooltip = "Daemon unhealthy";
+            statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+          } else {
+            // Daemon not running
+            statusBarItem.text = "$(circle-slash) Beads Daemon";
+            statusBarItem.tooltip = "Daemon not running";
+            statusBarItem.backgroundColor = undefined;
+
+            // Auto-start daemon if not running and haven't tried yet
+            if (!autoStartAttempted) {
+              autoStartAttempted = true;
+              output.appendLine('[Extension] Daemon not running, attempting auto-start...');
+              try {
+                await daemonManager.start();
+                output.appendLine('[Extension] Daemon started successfully');
+                // Update status immediately after starting
+                setTimeout(() => updateDaemonStatus && updateDaemonStatus(), 1000); // Give daemon time to initialize
+              } catch (startError) {
+                output.appendLine(`[Extension] Failed to auto-start daemon: ${sanitizeError(startError)}`);
+                // Show notification with option to start manually
+                vscode.window.showWarningMessage(
+                  'Beads daemon is not running. The extension requires the daemon to be running.',
+                  'Start Daemon'
+                ).then(action => {
+                  if (action === 'Start Daemon') {
+                    vscode.commands.executeCommand('beadsKanban.showDaemonActions');
+                  }
+                });
               }
-              break;
-            }
-            case "health": {
-              const health = await daemonManager.checkHealth();
-              if (health.healthy) {
-                vscode.window.showInformationMessage("Daemon is healthy");
-              } else {
-                vscode.window.showWarningMessage(`Daemon issues:\n${health.issues.join("\n")}`);
-              }
-              break;
-            }
-            case "restart": {
-              await daemonManager.restart();
-              vscode.window.showInformationMessage("Daemon restarted");
-              updateDaemonStatus();
-              break;
-            }
-            case "stop": {
-              await daemonManager.stop();
-              vscode.window.showInformationMessage("Daemon stopped");
-              updateDaemonStatus();
-              break;
-            }
-            case "logs": {
-              const logs = await daemonManager.getLogs(50);
-              const doc = await vscode.workspace.openTextDocument({
-                content: logs,
-                language: "log"
-              });
-              await vscode.window.showTextDocument(doc);
-              break;
             }
           }
         } catch (e) {
-          vscode.window.showErrorMessage(`Daemon action failed: ${sanitizeError(e)}`);
+          statusBarItem.text = "$(error) Beads Daemon";
+          statusBarItem.tooltip = `Error: ${sanitizeError(e)}`;
+          statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         }
-      })
-    );
+      };
+    }
+
+    return daemonManager;
+  };
+
+  startDaemonPolling = () => {
+    if (pollInterval || !updateDaemonStatus) return; // Already polling or not initialized
+    updateDaemonStatus(); // Initial check
+    pollInterval = setInterval(updateDaemonStatus, 10000);
+  };
+
+  stopDaemonPolling = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  };
+
+  context.subscriptions.push({ dispose: () => adapter?.dispose() });
+  context.subscriptions.push({ dispose: stopDaemonPolling });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("beadsKanban.showDaemonActions", async () => {
+      const manager = ensureDaemonManager();
+      if (!manager) {
+        vscode.window.showErrorMessage('Beads Kanban requires an open workspace folder.');
+        return;
+      }
+
+      const actions = [
+        { label: "$(info) Show Status", action: "status" },
+        { label: "$(play) Start Daemon", action: "start" },
+        { label: "$(list-tree) List All Daemons", action: "list" },
+        { label: "$(pulse) Check Health", action: "health" },
+        { label: "$(debug-restart) Restart Daemon", action: "restart" },
+        { label: "$(debug-stop) Stop Daemon", action: "stop" },
+        { label: "$(output) View Logs", action: "logs" }
+      ];
+
+      const selected = await vscode.window.showQuickPick(actions, {
+        placeHolder: "Select daemon action"
+      });
+
+      if (!selected) return;
+
+      try {
+        switch (selected.action) {
+          case "status": {
+            const status = await manager.getStatus();
+            const msg = status.running
+              ? `Daemon is running${status.pid ? ` (PID ${status.pid})` : ''}`
+              : `Daemon is not running${status.error ? `: ${status.error}` : ''}`;
+            vscode.window.showInformationMessage(msg);
+            break;
+          }
+          case "start": {
+            await manager.start();
+            vscode.window.showInformationMessage("Daemon started");
+            updateDaemonStatus && updateDaemonStatus();
+            break;
+          }
+          case "list": {
+            const daemons = await manager.listAllDaemons();
+            if (daemons.length === 0) {
+              vscode.window.showInformationMessage("No daemons running");
+            } else {
+              const list = daemons.map(d => `${d.workspace} (PID ${d.pid}, v${d.version})`).join("\n");
+              vscode.window.showInformationMessage(`Running daemons:\n${list}`);
+            }
+            break;
+          }
+          case "health": {
+            const health = await manager.checkHealth();
+            if (health.healthy) {
+              vscode.window.showInformationMessage("Daemon is healthy");
+            } else {
+              vscode.window.showWarningMessage(`Daemon issues:\n${health.issues.join("\n")}`);
+            }
+            break;
+          }
+          case "restart": {
+            await manager.restart();
+            vscode.window.showInformationMessage("Daemon restarted");
+            updateDaemonStatus && updateDaemonStatus();
+            break;
+          }
+          case "stop": {
+            await manager.stop();
+            vscode.window.showInformationMessage("Daemon stopped");
+            updateDaemonStatus && updateDaemonStatus();
+            break;
+          }
+          case "logs": {
+            const logs = await manager.getLogs(50);
+            const doc = await vscode.workspace.openTextDocument({
+              content: logs,
+              language: "log"
+            });
+            await vscode.window.showTextDocument(doc);
+            break;
+          }
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(`Daemon action failed: ${sanitizeError(e)}`);
+      }
+    })
+  );
+
+  if (vscode.workspace.workspaceFolders?.[0]) {
+    ensureAdapter();
+    ensureDaemonManager();
   }
 
   const openCmd = vscode.commands.registerCommand("beadsKanban.openBoard", async () => {
+    const ws = vscode.workspace.workspaceFolders?.[0];
+    if (!ws) {
+      vscode.window.showErrorMessage('Beads Kanban requires an open workspace folder.');
+      return;
+    }
+
+    const adapter = ensureAdapter();
+    if (!adapter) {
+      vscode.window.showErrorMessage('Beads Kanban requires an open workspace folder.');
+      return;
+    }
+
+    ensureDaemonManager();
     try {
       output.appendLine('[Extension] === Opening Beads Kanban Board ===');
       output.appendLine('[Extension] Creating webview panel...');
@@ -342,8 +393,9 @@ export function activate(context: vscode.ExtensionContext) {
     loadedRanges.set('closed', []);
 
     const post = (msg: ExtMsg) => {
-      if (isDisposed) {
-        output.appendLine(`[Extension] Attempted to post to disposed webview: ${msg.type}`);
+      // Atomic check for disposal and cancellation to prevent TOCTOU race condition
+      if (isDisposed || cancellationToken.cancelled) {
+        output.appendLine(`[Extension] Attempted to post to disposed/cancelled webview: ${msg.type}`);
         return;
       }
       try {
@@ -368,14 +420,18 @@ export function activate(context: vscode.ExtensionContext) {
       output.appendLine(`[Extension] sendBoard called with requestId: ${requestId}`);
       initialLoadSent = true; // Mark that we've sent board data
       try {
+        // Read configuration settings
+        const config = vscode.workspace.getConfiguration('beadsKanban');
+        const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
+
         // Phase 1-3: Prefer fast minimal loading if available
         const supportsFastLoading = typeof (adapter as any).getBoardMinimal === 'function';
-        
+
         if (supportsFastLoading) {
-          output.appendLine(`[Extension] Using fast loading path (getBoardMinimal)`);
-          const cards = await (adapter as any).getBoardMinimal();
+          output.appendLine(`[Extension] Using fast loading path (getBoardMinimal) with limit: ${initialLoadLimit}`);
+          const cards = await (adapter as any).getBoardMinimal(initialLoadLimit);
           output.appendLine(`[Extension] Loaded ${cards.length} minimal cards for refresh`);
-          
+
           // Check cancellation before posting
           if (!cancellationToken.cancelled) {
             post({ type: "board.minimal", requestId, payload: { cards } });
@@ -385,9 +441,7 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
 
-        // Fallback: Read configuration settings for incremental loading
-        const config = vscode.workspace.getConfiguration('beadsKanban');
-        const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
+        // Fallback: Use incremental loading
         const preloadClosedColumn = config.get<boolean>('preloadClosedColumn', false);
 
         output.appendLine(`[Extension] Using initialLoadLimit: ${initialLoadLimit}, preloadClosedColumn: ${preloadClosedColumn}`);
@@ -673,9 +727,13 @@ export function activate(context: vscode.ExtensionContext) {
             post({ type: "mutation.error", requestId: msg.requestId, error: "Adapter does not support fast minimal loading. Please enable daemon mode or update your adapter." });
             return;
           }
-          
-          output.appendLine(`[Extension] Loading minimal board data`);
-          const cards = await (adapter as any).getBoardMinimal();
+
+          // Read config to get limit
+          const config = vscode.workspace.getConfiguration('beadsKanban');
+          const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
+
+          output.appendLine(`[Extension] Loading minimal board data with limit: ${initialLoadLimit}`);
+          const cards = await (adapter as any).getBoardMinimal(initialLoadLimit);
           output.appendLine(`[Extension] Loaded ${cards.length} minimal cards`);
           
           // Check cancellation before posting
@@ -696,10 +754,11 @@ export function activate(context: vscode.ExtensionContext) {
       if (msg.type === "issue.getFull") {
         try {
           const issueId = msg.payload.id;
-          
-          // Validate issue ID
-          if (!issueId || typeof issueId !== 'string' || issueId.length === 0 || issueId.length > 100) {
-            post({ type: "mutation.error", requestId: msg.requestId, error: "Invalid issue ID provided" });
+
+          // Validate issue ID using same schema as adapter
+          const validation = IssueIdSchema.safeParse(issueId);
+          if (!validation.success) {
+            post({ type: "mutation.error", requestId: msg.requestId, error: "Invalid issue ID format" });
             return;
           }
           
@@ -816,8 +875,9 @@ export function activate(context: vscode.ExtensionContext) {
             description: validation.data.description
           }, output);
           if (!createValid) {
-            output.appendLine(`[Extension] Warning: Suspicious content detected in new issue`);
-            // Log warning but allow creation (defense-in-depth, not blocking)
+            output.appendLine(`[Extension] BLOCKED: Suspicious content detected in new issue`);
+            post({ type: "mutation.error", requestId: msg.requestId, error: "Content contains unsafe patterns (javascript:, <script>, or data:text/html)" });
+            return;
           }
           
           await adapter.createIssue(validation.data);
@@ -881,8 +941,9 @@ export function activate(context: vscode.ExtensionContext) {
             notes: validation.data.updates.notes
           }, output);
           if (!updateValid) {
-            output.appendLine(`[Extension] Warning: Suspicious content detected in issue update`);
-            // Log warning but allow update (defense-in-depth, not blocking)
+            output.appendLine(`[Extension] BLOCKED: Suspicious content detected in issue update`);
+            post({ type: "mutation.error", requestId: msg.requestId, error: "Content contains unsafe patterns (javascript:, <script>, or data:text/html)" });
+            return;
           }
           
           await adapter.updateIssue(validation.data.id, validation.data.updates);
@@ -909,8 +970,9 @@ export function activate(context: vscode.ExtensionContext) {
             // Validate comment markdown content (defense-in-depth)
             const commentValidation = validateCommentContent(validation.data.text, output);
             if (!commentValidation.isValid) {
-              output.appendLine(`[Extension] Warning: Suspicious content detected in comment`);
-              // Log warning but allow comment (defense-in-depth, not blocking)
+              output.appendLine(`[Extension] BLOCKED: Suspicious content detected in comment`);
+              post({ type: "mutation.error", requestId: msg.requestId, error: "Comment contains unsafe patterns (javascript:, <script>, or data:text/html)" });
+              return;
             }
             
             await adapter.addComment(validation.data.id, validation.data.text, validation.data.author);
@@ -1038,25 +1100,41 @@ export function activate(context: vscode.ExtensionContext) {
           clearTimeout(refreshTimeout);
         }
         refreshTimeout = setTimeout(async () => {
+          // Check disposal before starting async operations
+          if (isDisposed || cancellationToken.cancelled) {
+            output.appendLine('[Extension] Skipping file watcher refresh - panel disposed');
+            return;
+          }
+
           try {
             // Reload database from disk to pick up external changes
             await adapter.reloadDatabase();
+
+            // Check disposal again after async operation
+            if (isDisposed || cancellationToken.cancelled) {
+              output.appendLine('[Extension] Skipping sendBoard - panel disposed during reload');
+              return;
+            }
+
             const requestId = `fs-${Date.now()}`;
             sendBoard(requestId);
           } catch (error) {
             const errorMsg = `Failed to reload database: ${sanitizeError(error)}`;
 
-            // Send error to webview
-            panel.webview.postMessage({
-              type: "mutation.error",
-              requestId: `fs-error-${Date.now()}`,
-              error: errorMsg
-            });
+            // Check disposal before posting error
+            if (!isDisposed && !cancellationToken.cancelled) {
+              // Send error to webview using post() for safety
+              post({
+                type: "mutation.error",
+                requestId: `fs-error-${Date.now()}`,
+                error: errorMsg
+              });
 
-            // Show warning to user so they know auto-refresh is broken
-            vscode.window.showWarningMessage(
-              `Beads auto-refresh failed: ${errorMsg}. Use the Refresh button to try again.`
-            );
+              // Show warning to user so they know auto-refresh is broken
+              vscode.window.showWarningMessage(
+                `Beads auto-refresh failed: ${errorMsg}. Use the Refresh button to try again.`
+              );
+            }
           }
           // Reset change tracking after refresh completes
           changeCount = 0;
