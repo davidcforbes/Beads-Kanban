@@ -1729,14 +1729,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("message", (event) => {
-    // Defense-in-depth: Validate message source in webview context
-    // In VS Code webviews, messages should come from the extension host
-    // This check provides an additional security layer beyond VS Code's sandboxing
-    if (event.source && event.source !== window && event.source !== window.parent) {
-        console.warn('Received message from unexpected source, ignoring');
-        return;
-    }
-
     const msg = event.data;
     if (!msg || !msg.type) {
         return;
