@@ -60,21 +60,33 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
       </div>
       <div class="filters">
         <input id="filterSearch" type="text" placeholder="Search... (${modKey}+F)" title="Focus search (${modKey}+F)" class="search-input" />
-        <select id="filterPriority" class="select">
-           <option value="">Priority: All</option>
-           <option value="0">P0</option>
-           <option value="1">P1</option>
-           <option value="2">P2</option>
-           <option value="3">P3</option>
-        </select>
-        <select id="filterType" class="select">
-           <option value="">Type: All</option>
-           <option value="task">Task</option>
-           <option value="bug">Bug</option>
-           <option value="feature">Feature</option>
-           <option value="epic">Epic</option>
-           <option value="chore">Chore</option>
-        </select>
+        <div class="status-filter-wrapper">
+          <button id="filterPriorityBtn" class="select status-filter-btn" type="button" title="Filter by priority">
+            <span id="filterPriorityLabel">Priority: All</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div id="filterPriorityDropdown" class="status-dropdown hidden">
+            <label class="status-option"><input type="checkbox" value="" checked /> All</label>
+            <label class="status-option"><input type="checkbox" value="0" /> P0</label>
+            <label class="status-option"><input type="checkbox" value="1" /> P1</label>
+            <label class="status-option"><input type="checkbox" value="2" /> P2</label>
+            <label class="status-option"><input type="checkbox" value="3" /> P3</label>
+          </div>
+        </div>
+        <div class="status-filter-wrapper">
+          <button id="filterTypeBtn" class="select status-filter-btn" type="button" title="Filter by type">
+            <span id="filterTypeLabel">Type: All</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div id="filterTypeDropdown" class="status-dropdown hidden">
+            <label class="status-option"><input type="checkbox" value="" checked /> All</label>
+            <label class="status-option"><input type="checkbox" value="task" /> Task</label>
+            <label class="status-option"><input type="checkbox" value="bug" /> Bug</label>
+            <label class="status-option"><input type="checkbox" value="feature" /> Feature</label>
+            <label class="status-option"><input type="checkbox" value="epic" /> Epic</label>
+            <label class="status-option"><input type="checkbox" value="chore" /> Chore</label>
+          </div>
+        </div>
         <div class="status-filter-wrapper">
           <button id="filterStatusBtn" class="select status-filter-btn" type="button" title="Filter by status">
             <span id="filterStatusLabel">Status: All</span>

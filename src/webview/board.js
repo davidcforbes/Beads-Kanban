@@ -18,8 +18,12 @@ const detMeta = document.getElementById("detMeta");
 const addToChatBtn = document.getElementById("addToChatBtn");
 const copyContextBtn = document.getElementById("copyContextBtn");
 
-const filterPriority = document.getElementById("filterPriority");
-const filterType = document.getElementById("filterType");
+const filterPriorityBtn = document.getElementById("filterPriorityBtn");
+const filterPriorityLabel = document.getElementById("filterPriorityLabel");
+const filterPriorityDropdown = document.getElementById("filterPriorityDropdown");
+const filterTypeBtn = document.getElementById("filterTypeBtn");
+const filterTypeLabel = document.getElementById("filterTypeLabel");
+const filterTypeDropdown = document.getElementById("filterTypeDropdown");
 const filterStatusBtn = document.getElementById("filterStatusBtn");
 const filterStatusLabel = document.getElementById("filterStatusLabel");
 const filterStatusDropdown = document.getElementById("filterStatusDropdown");
@@ -75,6 +79,48 @@ function setupBoardEventDelegation() {
 // Initialize event delegation
 setupBoardEventDelegation();
 
+// Custom priority filter dropdown logic
+function getSelectedPriorities() {
+    if (!filterPriorityDropdown) return [];
+    const checkboxes = filterPriorityDropdown.querySelectorAll('input[type="checkbox"]:checked');
+    const values = Array.from(checkboxes).map(cb => cb.value).filter(v => v !== ''); // Filter out "All" (empty value)
+    return values.map(v => parseInt(v)); // Convert to numbers
+}
+
+function updatePriorityLabel() {
+    if (!filterPriorityLabel) return;
+    const selected = getSelectedPriorities();
+    if (selected.length === 0) {
+        filterPriorityLabel.textContent = 'Priority: All';
+    } else if (selected.length === 1) {
+        filterPriorityLabel.textContent = `Priority: P${selected[0]}`;
+    } else {
+        filterPriorityLabel.textContent = `Priority: ${selected.length} selected`;
+    }
+}
+
+// Custom type filter dropdown logic
+function getSelectedTypes() {
+    if (!filterTypeDropdown) return [];
+    const checkboxes = filterTypeDropdown.querySelectorAll('input[type="checkbox"]:checked');
+    const values = Array.from(checkboxes).map(cb => cb.value).filter(v => v !== ''); // Filter out "All" (empty value)
+    return values;
+}
+
+function updateTypeLabel() {
+    if (!filterTypeLabel) return;
+    const selected = getSelectedTypes();
+    if (selected.length === 0) {
+        filterTypeLabel.textContent = 'Type: All';
+    } else if (selected.length === 1) {
+        // Capitalize first letter
+        const type = selected[0].charAt(0).toUpperCase() + selected[0].slice(1);
+        filterTypeLabel.textContent = `Type: ${type}`;
+    } else {
+        filterTypeLabel.textContent = `Type: ${selected.length} selected`;
+    }
+}
+
 // Custom status filter dropdown logic
 function getSelectedStatuses() {
     if (!filterStatusDropdown) return [];
@@ -97,7 +143,115 @@ function updateStatusLabel() {
     }
 }
 
-// Toggle dropdown on button click
+// Toggle dropdown on button click - Priority Filter
+if (filterPriorityBtn && filterPriorityDropdown) {
+    filterPriorityBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        filterPriorityDropdown.classList.toggle('hidden');
+    });
+
+    // Update label and trigger filter when checkbox changes
+    filterPriorityDropdown.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const allCheckbox = filterPriorityDropdown.querySelector('input[value=""]');
+
+            if (checkbox.value === '') {
+                // "All" checkbox was clicked
+                if (checkbox.checked) {
+                    // Uncheck all other checkboxes
+                    filterPriorityDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        if (cb.value !== '') cb.checked = false;
+                    });
+                }
+            } else {
+                // A specific priority checkbox was clicked
+                if (checkbox.checked) {
+                    // Uncheck "All"
+                    if (allCheckbox) allCheckbox.checked = false;
+                } else {
+                    // If no checkboxes are checked, check "All"
+                    const anyChecked = Array.from(filterPriorityDropdown.querySelectorAll('input[type="checkbox"]'))
+                        .some(cb => cb.value !== '' && cb.checked);
+                    if (!anyChecked && allCheckbox) {
+                        allCheckbox.checked = true;
+                    }
+                }
+            }
+
+            updatePriorityLabel();
+            // Use debounced render to prevent excessive re-renders
+            debouncedRender();
+        });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!filterPriorityDropdown.contains(e.target) && e.target !== filterPriorityBtn) {
+            filterPriorityDropdown.classList.add('hidden');
+        }
+    });
+
+    // Prevent dropdown from closing when clicking inside it
+    filterPriorityDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+}
+
+// Toggle dropdown on button click - Type Filter
+if (filterTypeBtn && filterTypeDropdown) {
+    filterTypeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        filterTypeDropdown.classList.toggle('hidden');
+    });
+
+    // Update label and trigger filter when checkbox changes
+    filterTypeDropdown.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const allCheckbox = filterTypeDropdown.querySelector('input[value=""]');
+
+            if (checkbox.value === '') {
+                // "All" checkbox was clicked
+                if (checkbox.checked) {
+                    // Uncheck all other checkboxes
+                    filterTypeDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        if (cb.value !== '') cb.checked = false;
+                    });
+                }
+            } else {
+                // A specific type checkbox was clicked
+                if (checkbox.checked) {
+                    // Uncheck "All"
+                    if (allCheckbox) allCheckbox.checked = false;
+                } else {
+                    // If no checkboxes are checked, check "All"
+                    const anyChecked = Array.from(filterTypeDropdown.querySelectorAll('input[type="checkbox"]'))
+                        .some(cb => cb.value !== '' && cb.checked);
+                    if (!anyChecked && allCheckbox) {
+                        allCheckbox.checked = true;
+                    }
+                }
+            }
+
+            updateTypeLabel();
+            // Use debounced render to prevent excessive re-renders
+            debouncedRender();
+        });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!filterTypeDropdown.contains(e.target) && e.target !== filterTypeBtn) {
+            filterTypeDropdown.classList.add('hidden');
+        }
+    });
+
+    // Prevent dropdown from closing when clicking inside it
+    filterTypeDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+}
+
+// Toggle dropdown on button click - Status Filter
 if (filterStatusBtn && filterStatusDropdown) {
     filterStatusBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -631,32 +785,32 @@ function columnForCard(card) {
 // Returns filtered array of cards based on current filter values
 // Performance target: <16ms for 10,000 cards
 function getFilteredCards() {
-    const pVal = filterPriority?.value || "";
-    const tVal = filterType?.value || "";
     const sVal = filterSearch?.value?.toLowerCase()?.trim() || "";
-    
-    // Get selected status values from custom dropdown
+
+    // Get selected values from custom dropdowns (multi-select)
+    const selectedPriorities = getSelectedPriorities();
+    const selectedTypes = getSelectedTypes();
     const selectedStatuses = getSelectedStatuses();
 
-    
+
     // If no filters, return all cards from cache
-    if (!pVal && !tVal && !sVal && selectedStatuses.length === 0) {
+    if (selectedPriorities.length === 0 && selectedTypes.length === 0 && !sVal && selectedStatuses.length === 0) {
         return Array.from(cardCache.values());
     }
-    
+
     // Filter cards in memory
     const filtered = [];
     for (const card of cardCache.values()) {
-        // Priority filter
-        if (pVal !== "" && card.priority !== parseInt(pVal)) {
+        // Priority filter (multi-select)
+        if (selectedPriorities.length > 0 && !selectedPriorities.includes(card.priority)) {
             continue;
         }
-        
-        // Type filter
-        if (tVal !== "" && card.issue_type !== tVal) {
+
+        // Type filter (multi-select)
+        if (selectedTypes.length > 0 && !selectedTypes.includes(card.issue_type)) {
             continue;
         }
-        
+
         // Status filter (multi-select)
         // Filter by actual database status, not visual column mapping
         if (selectedStatuses.length > 0) {
@@ -664,22 +818,22 @@ function getFilteredCards() {
                 continue;
             }
         }
-        
+
         // Search filter (title, description, ID, or labels)
         if (sVal !== "") {
             const titleMatch = card.title.toLowerCase().includes(sVal);
             const descMatch = card.description && card.description.toLowerCase().includes(sVal);
             const idMatch = card.id.toLowerCase().includes(sVal);
             const labelMatch = card.labels && card.labels.some(label => label.toLowerCase().includes(sVal));
-            
+
             if (!titleMatch && !descMatch && !idMatch && !labelMatch) {
                 continue;
             }
         }
-        
+
         filtered.push(card);
     }
-    
+
 
     return filtered;
 }
@@ -824,17 +978,17 @@ function renderKanban() {
     // This handles the case where board.load (old path) is used instead of board.loadMinimal
     if (cardCache.size === 0) {
 
-        const pVal = filterPriority.value;
-        const tVal = filterType.value;
+        const selectedPriorities = getSelectedPriorities();
+        const selectedTypes = getSelectedTypes();
         const sVal = filterSearch.value.toLowerCase();
-        
+
         for (const col of columns) {
             const colKey = col.key;
             const colCards = columnState[colKey]?.cards || [];
-            
+
             byCol[colKey] = colCards.filter(c => {
-                if (pVal !== "" && c.priority !== parseInt(pVal)) return false;
-                if (tVal !== "" && c.issue_type !== tVal) return false;
+                if (selectedPriorities.length > 0 && !selectedPriorities.includes(c.priority)) return false;
+                if (selectedTypes.length > 0 && !selectedTypes.includes(c.issue_type)) return false;
                 if (sVal !== "" && !c.title.toLowerCase().includes(sVal)) return false;
                 return true;
             });
@@ -927,7 +1081,7 @@ function renderKanban() {
         // Show "loaded / total" format for incremental loading
         const colState = columnState[col.key];
         const filteredCount = (byCol[col.key] || []).length;
-        const hasActiveFilters = filterPriority.value || filterType.value || getSelectedStatuses().length > 0 || filterSearch.value;
+        const hasActiveFilters = getSelectedPriorities().length > 0 || getSelectedTypes().length > 0 || getSelectedStatuses().length > 0 || filterSearch.value;
 
         if (colState && colState.totalCount > colState.cards.length) {
             // Partial load: show "filtered (loaded / total)"
@@ -1654,16 +1808,32 @@ repoMenuBtn.addEventListener("click", () => {
     toast("Opening repository selector...");
 });
 
-// Apply debouncing to all filter changes to prevent excessive re-renders
-filterPriority.addEventListener("change", debouncedRender);
-filterType.addEventListener("change", debouncedRender);
-// Status filter uses debouncedRender in checkbox handler (line 137)
+// Apply debouncing to filter changes to prevent excessive re-renders
+// Priority, Type, and Status filters use debouncedRender in checkbox handlers
 filterSearch.addEventListener("input", debouncedRender);
 
 // Clear all filters
 clearFiltersBtn.addEventListener("click", () => {
-    filterPriority.value = '';
-    filterType.value = '';
+    // Clear all priority checkboxes and check "All"
+    filterPriorityDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (cb.value === '') {
+            cb.checked = true; // Check "All"
+        } else {
+            cb.checked = false; // Uncheck all others
+        }
+    });
+    updatePriorityLabel();
+
+    // Clear all type checkboxes and check "All"
+    filterTypeDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (cb.value === '') {
+            cb.checked = true; // Check "All"
+        } else {
+            cb.checked = false; // Uncheck all others
+        }
+    });
+    updateTypeLabel();
+
     // Clear all status checkboxes and check "All"
     filterStatusDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         if (cb.value === '') {
@@ -1673,6 +1843,7 @@ clearFiltersBtn.addEventListener("click", () => {
         }
     });
     updateStatusLabel();
+
     filterSearch.value = '';
     render();
 });
