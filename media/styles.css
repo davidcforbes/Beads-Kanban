@@ -97,12 +97,11 @@
 
 .markdown-fields-container {
     display: flex;
+    flex-direction: column;
     gap: 12px;
-    height: 300px;
 }
 
 .markdown-field-wrapper {
-    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -116,20 +115,22 @@
 }
 
 .markdown-field-editor {
-    flex: 1;
     font-family: inherit;
-    resize: none;
+    resize: vertical;
     display: block;
+    min-height: 80px;
+    height: 120px;
 }
 
 .markdown-field-preview {
-    flex: 1;
     overflow-y: auto;
     display: none;
     padding: 8px;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: rgba(255,255,255,0.03);
+    min-height: 80px;
+    height: 120px;
 }
 
 *,
