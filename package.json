@@ -33,9 +33,7 @@
     "Visualization"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:beadsKanban.openBoard",
-    "onCommand:beadsKanban.showDaemonActions"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
