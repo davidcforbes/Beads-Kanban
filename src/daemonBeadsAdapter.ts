@@ -526,7 +526,8 @@ export class DaemonBeadsAdapter {
         labels: Array.isArray(issue.labels) ? issue.labels : [],
         external_ref: issue.external_ref || null,
         pinned: issue.pinned || false,
-        blocked_by_count: issue.blocked_by_count || 0
+        blocked_by_count: issue.blocked_by_count || 0,
+        is_ready: issue.status === 'open' && (issue.blocked_by_count || 0) === 0
       }));
 
       this.output.appendLine(`[DaemonBeadsAdapter] getBoardMinimal: Loaded ${enrichedCards.length} enriched cards`);

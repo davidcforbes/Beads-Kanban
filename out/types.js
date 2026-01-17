@@ -68,7 +68,7 @@ exports.DependencySchema = zod_1.z.object({
 // Schemas for incremental loading messages
 exports.BoardLoadColumnSchema = zod_1.z.object({
     column: BoardColumnKeySchema,
-    offset: zod_1.z.number().int().min(0),
+    offset: zod_1.z.number().int().min(0).max(5000), // Prevent DoS from excessive offset values
     limit: zod_1.z.number().int().min(1).max(500)
 });
 exports.BoardLoadMoreSchema = zod_1.z.object({

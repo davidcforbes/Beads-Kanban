@@ -83,6 +83,7 @@ export interface EnrichedCard extends MinimalCard {
   external_ref?: string | null;
   pinned?: boolean;
   blocked_by_count?: number;
+  is_ready?: boolean;
 }
 
 /**
