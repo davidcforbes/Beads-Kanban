@@ -66,21 +66,20 @@ class DaemonBeadsAdapter {
     }
     /**
      * Sanitize CLI argument to prevent command injection and parsing issues
-     * Removes null bytes, excessive whitespace, and other problematic characters
+     * Removes null bytes which can cause command truncation
+     *
+     * Note: We preserve newlines and whitespace to maintain markdown formatting.
+     * This is safe because:
+     * 1. We use shell:false when spawning processes (no shell interpretation)
+     * 2. We use '--' separators to prevent flag injection
+     * 3. We use validateFlagValue() to check for flag injection attempts
      */
     sanitizeCliArg(arg) {
         if (typeof arg !== 'string') {
             return String(arg);
         }
-        return arg
-            // Remove null bytes (can cause command truncation)
-            .replace(/\0/g, '')
-            // Replace newlines with spaces (prevents command splitting)
-            .replace(/[\r\n]+/g, ' ')
-            // Collapse multiple spaces into single space
-            .replace(/\s+/g, ' ')
-            // Trim leading/trailing whitespace
-            .trim();
+        // Only remove null bytes - preserve newlines and whitespace for markdown
+        return arg.replace(/\0/g, '');
     }
     /**
      * Validates issue ID to prevent command injection
@@ -270,9 +269,10 @@ class DaemonBeadsAdapter {
                 }
             }, timeoutMs);
             child.stdout.on('data', (data) => {
-                stdout += data.toString();
-                // Check buffer size limit
-                if (stdout.length > MAX_BUFFER_SIZE) {
+                // Check buffer size limit BEFORE concatenation to prevent memory spikes
+                // If data arrives in large chunks (e.g., 15MB), checking after would temporarily exceed limit
+                const dataStr = data.toString();
+                if (stdout.length + dataStr.length > MAX_BUFFER_SIZE) {
                     if (!killed) {
                         killed = true;
                         clearTimeout(timeoutHandle);
@@ -280,12 +280,14 @@ class DaemonBeadsAdapter {
                         this.output.appendLine(`[DaemonBeadsAdapter] Command exceeded buffer limit (${MAX_BUFFER_SIZE} bytes): ${command}`);
                         reject(new Error(`Command output exceeded ${MAX_BUFFER_SIZE} bytes limit`));
                     }
+                    return; // Don't append the data
                 }
+                stdout += dataStr;
             });
             child.stderr.on('data', (data) => {
-                stderr += data.toString();
-                // Check buffer size limit for stderr too
-                if (stderr.length > MAX_BUFFER_SIZE) {
+                // Check buffer size limit BEFORE concatenation to prevent memory spikes
+                const dataStr = data.toString();
+                if (stderr.length + dataStr.length > MAX_BUFFER_SIZE) {
                     if (!killed) {
                         killed = true;
                         clearTimeout(timeoutHandle);
@@ -293,7 +295,9 @@ class DaemonBeadsAdapter {
                         this.output.appendLine(`[DaemonBeadsAdapter] Command error output exceeded buffer limit: ${command}`);
                         reject(new Error(`Command error output exceeded ${MAX_BUFFER_SIZE} bytes limit`));
                     }
+                    return; // Don't append the data
                 }
+                stderr += dataStr;
             });
             child.on('error', (error) => {
                 if (!killed) {
@@ -459,19 +463,20 @@ class DaemonBeadsAdapter {
                         throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
                     }
                     // If batch fails (likely due to missing/invalid ID), try each issue individually
-                    this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
+                    // Use parallel execution to avoid N+1 sequential query problem (50 issues: 50ms vs 2500ms)
+                    this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying ${batch.length} issues in parallel: ${error instanceof Error ? error.message : String(error)}`);
+                    const individualResults = await Promise.allSettled(batch.map(id => this.execBd(['show', '--json', id])));
                     let batchFailureCount = 0;
-                    for (const id of batch) {
-                        try {
-                            const singleResult = await this.execBd(['show', '--json', id]);
-                            if (Array.isArray(singleResult) && singleResult.length > 0) {
-                                detailedIssues.push(...singleResult);
-                            }
+                    for (const result of individualResults) {
+                        if (result.status === 'fulfilled' && Array.isArray(result.value) && result.value.length > 0) {
+                            detailedIssues.push(...result.value);
                         }
-                        catch (singleError) {
+                        else {
                             batchFailureCount++;
                             // Skip this issue - it may have been deleted or is invalid
-                            this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
+                            if (result.status === 'rejected') {
+                                this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${result.reason}`);
+                            }
                         }
                     }
                     // Record batch result based on failure rate
@@ -946,18 +951,20 @@ class DaemonBeadsAdapter {
                     throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
                 }
                 // If batch fails, try each issue individually
-                this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
+                // Use parallel execution to avoid N+1 sequential query problem (50 issues: 50ms vs 2500ms)
+                this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying ${batch.length} issues in parallel: ${error instanceof Error ? error.message : String(error)}`);
+                const individualResults = await Promise.allSettled(batch.map(id => this.execBd(['show', '--json', id])));
                 let batchFailureCount = 0;
-                for (const id of batch) {
-                    try {
-                        const singleResult = await this.execBd(['show', '--json', id]);
-                        if (Array.isArray(singleResult) && singleResult.length > 0) {
-                            detailedIssues.push(...singleResult);
-                        }
+                for (const result of individualResults) {
+                    if (result.status === 'fulfilled' && Array.isArray(result.value) && result.value.length > 0) {
+                        detailedIssues.push(...result.value);
                     }
-                    catch (singleError) {
+                    else {
                         batchFailureCount++;
-                        this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
+                        // Skip this issue - it may have been deleted or is invalid
+                        if (result.status === 'rejected') {
+                            this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${result.reason}`);
+                        }
                     }
                 }
                 // Record batch result based on failure rate

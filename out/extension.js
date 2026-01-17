@@ -49,26 +49,34 @@ const MAX_CLIPBOARD_TEXT = 100_000; // 100KB for clipboard
 // sanitizeError is now imported from ./sanitizeError
 /**
  * Sanitizes text for CSV injection attacks.
- * Prefixes text starting with formula-triggering characters with a single quote.
- * This prevents Excel/CSV applications from interpreting the content as formulas.
+ * Uses OWASP-recommended double-quote escaping: https://owasp.org/www-community/attacks/CSV_Injection
+ *
+ * Defense layers:
+ * 1. Strip control characters (prevents tab-prefixed formulas)
+ * 2. Prefix dangerous start characters with single quote (defense-in-depth)
+ * 3. Wrap entire field in double quotes with proper CSV escaping (standard approach)
  *
  * @param text - The text to sanitize
  * @returns Sanitized text safe for clipboard/CSV
  */
 function sanitizeForCSV(text) {
     if (!text || text.length === 0) {
-        return text;
+        return '""'; // Empty cells should still be quoted
     }
-    // Replace tabs and newlines with spaces to prevent cell splitting
-    let sanitized = text.replace(/[\t\r\n]/g, ' ');
-    // Check if text starts with formula-triggering characters and prefix with quote
-    const formulaChars = ['=', '+', '-', '@'];
-    if (formulaChars.includes(sanitized.charAt(0))) {
+    // Replace control characters (including tabs, newlines, null bytes) with spaces
+    // This prevents cell splitting and tab-prefixed formula injection
+    let sanitized = text.replace(/[\x00-\x1F\x7F]/g, ' ');
+    // Check for formula-triggering characters at start: =, +, -, @, |, whitespace
+    // Note: Pipe (|) is used in some CSV injection techniques
+    const dangerousStart = /^[\s=+\-@|]/;
+    if (dangerousStart.test(sanitized)) {
+        // Prefix with single quote as an additional defense layer
         sanitized = "'" + sanitized;
     }
-    // Additional defense: Escape any remaining formula injection attempts
-    // Replace formula chars that appear after whitespace (common injection vector)
-    sanitized = sanitized.replace(/(\s+)([=+\-@])/g, '$1\'$2');
+    // Standard CSV escaping: wrap in double quotes and escape internal quotes by doubling them
+    // This is the OWASP-recommended approach and universally supported by CSV parsers
+    sanitized = sanitized.replace(/"/g, '""');
+    sanitized = '"' + sanitized + '"';
     return sanitized;
 }
 /**
@@ -457,6 +465,7 @@ function activate(context) {
                         // Use getBoardMetadata() instead of getBoard() to avoid loading all issues
                         const data = await adapter.getBoardMetadata();
                         data.columnData = columnDataMap;
+                        data.readOnly = readOnly; // Propagate read-only mode to webview UI
                         // Validate markdown content in column cards (defense-in-depth)
                         // Note: data.cards is now empty array from getBoardMetadata, actual cards are in columnData
                         // Also validate cards in columnData
@@ -479,6 +488,7 @@ function activate(context) {
                         // Fallback to legacy full load
                         output.appendLine(`[Extension] Adapter does not support incremental loading, using legacy getBoard()`);
                         const data = await adapter.getBoard();
+                        data.readOnly = readOnly; // Propagate read-only mode to webview UI
                         output.appendLine(`[Extension] Got board data: ${data.cards?.length || 0} cards`);
                         // Validate markdown content in all cards (defense-in-depth)
                         await validateBoardCards(data.cards || [], output);
@@ -739,6 +749,7 @@ function activate(context) {
                             // Auto-reload the board data with the new repository
                             try {
                                 const data = await adapter.getBoard();
+                                data.readOnly = readOnly; // Propagate read-only mode to webview UI
                                 post({ type: "board.data", requestId: msg.requestId, payload: data });
                             }
                             catch (err) {
@@ -777,8 +788,8 @@ function activate(context) {
                             post({ type: "mutation.error", requestId: msg.requestId, error: "Content contains unsafe patterns (javascript:, <script>, or data:text/html)" });
                             return;
                         }
-                        await adapter.createIssue(validation.data);
-                        post({ type: "mutation.ok", requestId: msg.requestId });
+                        const created = await adapter.createIssue(validation.data);
+                        post({ type: "mutation.ok", requestId: msg.requestId, payload: { id: created.id } });
                         // push refreshed board
                         await sendBoard(msg.requestId);
                         return;

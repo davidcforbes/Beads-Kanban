@@ -50,7 +50,7 @@ type ExtMsg =
   | { type: "board.columnData"; requestId: string; payload: { column: BoardColumnKey; cards: BoardCard[]; offset: number; totalCount: number; hasMore: boolean } }
   | { type: "table.pageData"; requestId: string; payload: { cards: BoardCard[]; offset: number; totalCount: number; hasMore: boolean } }
   | { type: "issue.full"; requestId: string; payload: { card: FullCard } }
-  | { type: "mutation.ok"; requestId: string }
+  | { type: "mutation.ok"; requestId: string; payload?: any }
   | { type: "mutation.error"; requestId: string; error: string };
 
 // Size limits for text operations
