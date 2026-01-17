@@ -63,10 +63,16 @@ export class DaemonManager {
     if (!workspaceRoot || typeof workspaceRoot !== 'string') {
       throw new Error('Invalid workspace root: must be a non-empty string');
     }
-    
-    // Normalize the path to resolve any relative paths or path traversal attempts
+
+    // Prevent path traversal BEFORE normalization (path.resolve removes '..' making checks ineffective)
+    // This catches attempts like '../../../etc/passwd' before normalization
+    if (workspaceRoot.includes('..')) {
+      throw new Error('Invalid workspace root: path traversal sequences not allowed');
+    }
+
+    // Normalize the path to resolve any relative paths
     const normalized = path.resolve(workspaceRoot);
-    
+
     // Validate that the path exists and is a directory
     try {
       const stats = fs.statSync(normalized);
@@ -79,26 +85,16 @@ export class DaemonManager {
       }
       throw error;
     }
-    
+
     // Additional security checks: ensure path doesn't contain dangerous characters
-    // While cwd is relatively safe, these checks provide defense-in-depth
+    // Note: We use shell:false for all spawns, so shell metacharacters (like parentheses)
+    // are safe and common in legitimate paths like "Program Files (x86)"
 
-    // Block shell metacharacters
-    if (/[;&|`$()]/.test(normalized)) {
-      throw new Error('Invalid workspace root: path contains shell metacharacters');
-    }
-
-    // Block control characters (including newlines) that could enable injection
+    // Block control characters (including null bytes and newlines) that could enable injection
     if (/[\0-\x1F\x7F]/.test(normalized)) {
       throw new Error('Invalid workspace root: path contains control characters');
     }
 
-    // Prevent path traversal by checking for .. sequences
-    // Note: path.resolve() already normalizes, but this is defense-in-depth
-    if (normalized.includes('..')) {
-      throw new Error('Invalid workspace root: path traversal sequences not allowed');
-    }
-    
     this.workspaceRoot = normalized;
     this.logger = logger;
   }

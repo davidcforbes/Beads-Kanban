@@ -30,6 +30,14 @@ const filterStatusDropdown = document.getElementById("filterStatusDropdown");
 const filterSearch = document.getElementById("filterSearch");
 const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
+// Global unhandled promise rejection handler
+// Prevents webview from becoming unresponsive due to uncaught rejections (e.g., postAsync timeouts)
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  toast('An error occurred. Please try again.', 'Refresh', () => location.reload());
+  event.preventDefault(); // Prevent default browser error handling
+});
+
 // Set up event delegation for card interactions
 // This prevents memory leaks from re-attaching listeners on every render
 function setupBoardEventDelegation() {
@@ -364,6 +372,12 @@ let tablePaginationState = {
 // Store column picker document listener for cleanup
 let columnPickerDocListener = null;
 
+// Store pagination listeners for cleanup to prevent memory leaks
+let pageSizeChangeListener = null;
+let tablePrevPageListener = null;
+let tableNextPageListener = null;
+let resetTableColumnsListener = null;
+
 // Debounce utility for performance optimization
 function debounce(func, wait) {
     let timeout;
@@ -618,6 +632,23 @@ function safe(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/**
+ * Safely render markdown with size limits to prevent DoS
+ * Aligned with schema validation (IssueCreateSchema/IssueUpdateSchema in types.ts)
+ * @param {string} text - The markdown text to render
+ * @returns {string} - Sanitized HTML or error message if too large
+ */
+function safeRenderMarkdown(text) {
+    const MAX_MARKDOWN_SIZE = 100000; // 100KB limit to prevent DoS from unbounded parsing
+    if (!text) return '';
+    if (text.length > MAX_MARKDOWN_SIZE) {
+        return `<div class="error" style="color: var(--error); padding: 8px; background: rgba(255,0,0,0.1); border-radius: 4px;">
+            Content too large to display (${Math.round(text.length / 1024)}KB). Maximum size: ${Math.round(MAX_MARKDOWN_SIZE / 1024)}KB.
+        </div>`;
+    }
+    return DOMPurify.sanitize(marked.parse(text), purifyConfig);
 }
 
 // Validate CSS class names to prevent injection attacks
@@ -983,6 +1014,14 @@ function render() {
 // Create debounced render function for filter changes (300ms delay)
 // This prevents excessive re-renders when users change multiple filters quickly
 const debouncedRender = debounce(render, 300);
+
+// Create debounced renderTable function for table pagination changes (150ms delay)
+// This prevents listener accumulation and deadlock during rapid page size changes
+const debouncedRenderTable = debounce(() => {
+    if (typeof renderTable === 'function') {
+        renderTable();
+    }
+}, 150);
 
 // Kanban view rendering
 function renderKanban() {
@@ -1574,50 +1613,78 @@ function renderTable() {
     // Apply DOMPurify to table HTML for defense-in-depth
     boardEl.innerHTML = DOMPurify.sanitize(tableHtml, purifyConfig);
 
-    // Add page size selector handler
+    // Add page size selector handler with cleanup and debouncing
     const pageSizeSelect = document.getElementById('pageSizeSelect');
     if (pageSizeSelect) {
-        pageSizeSelect.addEventListener('change', (e) => {
+        // Remove old listener to prevent accumulation
+        if (pageSizeChangeListener) {
+            pageSizeSelect.removeEventListener('change', pageSizeChangeListener);
+        }
+
+        pageSizeChangeListener = (e) => {
             tablePaginationState.pageSize = parseInt(e.target.value);
             tablePaginationState.currentPage = 0; // Reset to first page
-            renderTable();
-        });
+            debouncedRenderTable(); // Use debounced version to prevent rapid re-renders
+        };
+
+        pageSizeSelect.addEventListener('change', pageSizeChangeListener);
     }
 
-    // Add pagination button handlers (buttons are now in header)
+    // Add pagination button handlers with cleanup (buttons are now in header)
     if (totalPages > 1) {
         const prevBtn = document.getElementById('tablePrevPage');
         const nextBtn = document.getElementById('tableNextPage');
-        
+
         if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
+            // Remove old listener to prevent accumulation
+            if (tablePrevPageListener) {
+                prevBtn.removeEventListener('click', tablePrevPageListener);
+            }
+
+            tablePrevPageListener = () => {
                 if (tablePaginationState.currentPage > 0) {
                     tablePaginationState.currentPage--;
                     renderTable();
                 }
-            });
+            };
+
+            prevBtn.addEventListener('click', tablePrevPageListener);
         }
-        
+
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
+            // Remove old listener to prevent accumulation
+            if (tableNextPageListener) {
+                nextBtn.removeEventListener('click', tableNextPageListener);
+            }
+
+            tableNextPageListener = () => {
                 if (tablePaginationState.currentPage < totalPages - 1) {
                     tablePaginationState.currentPage++;
                     renderTable();
                 }
-            });
+            };
+
+            nextBtn.addEventListener('click', tableNextPageListener);
         }
     }
 
-    // Add reset columns button handler
+    // Add reset columns button handler with cleanup
     const resetBtn = document.getElementById('resetTableColumns');
     if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
+        // Remove old listener to prevent accumulation
+        if (resetTableColumnsListener) {
+            resetBtn.removeEventListener('click', resetTableColumnsListener);
+        }
+
+        resetTableColumnsListener = () => {
             // Reset column visibility and order to defaults
             tableState.columnVisibility = {};
             tableState.columnOrder = [];
             saveState();
             renderTable();
-        });
+        };
+
+        resetBtn.addEventListener('click', resetTableColumnsListener);
     }
 
     // Add column picker dropdown handlers
@@ -1655,9 +1722,10 @@ function renderTable() {
         });
 
         // Close dropdown when clicking outside
-        // Remove old listener if it exists, then add new one
-        if (columnPickerDocListener) {
-            document.removeEventListener('click', columnPickerDocListener);
+        // Store old listener reference before creating new one to prevent memory leaks
+        const oldListener = columnPickerDocListener;
+        if (oldListener) {
+            document.removeEventListener('click', oldListener);
         }
 
         columnPickerDocListener = (e) => {
@@ -1975,23 +2043,40 @@ window.addEventListener("message", (event) => {
     }
 
     if (msg.type === "board.data") {
+        // Validate payload structure (defense-in-depth, extension already validates with Zod)
+        if (!msg.payload || typeof msg.payload !== 'object') {
+            console.error('Invalid board.data payload: missing or non-object payload');
+            toast('Invalid data received from extension', 'Refresh', () => location.reload());
+            return;
+        }
 
-        
+        // Clear cache to prevent stale data from deleted/modified cards
+        cardCache.clear();
+        cardStateLevel.clear();
+
         // Support both legacy flat cards array and new columnData structure
         if (msg.payload.columnData) {
             // New incremental loading format
 
-            columns = msg.payload.columns || [];
-            
+            // Validate columns array
+            columns = Array.isArray(msg.payload.columns) ? msg.payload.columns : [];
+
+            // Validate columnData is an object
+            if (typeof msg.payload.columnData !== 'object') {
+                console.error('Invalid columnData: expected object');
+                toast('Invalid data format', 'Refresh', () => location.reload());
+                return;
+            }
+
             // Initialize columnState from columnData
             for (const col of ['ready', 'in_progress', 'blocked', 'closed']) {
                 const data = msg.payload.columnData[col];
-                if (data) {
+                if (data && typeof data === 'object') {
                     columnState[col] = {
-                        cards: data.cards || [],
-                        offset: data.offset || 0,
-                        totalCount: data.totalCount || 0,
-                        hasMore: data.hasMore || false,
+                        cards: Array.isArray(data.cards) ? data.cards : [],
+                        offset: typeof data.offset === 'number' ? data.offset : 0,
+                        totalCount: typeof data.totalCount === 'number' ? data.totalCount : 0,
+                        hasMore: Boolean(data.hasMore),
                         loading: false
                     };
                 } else {
@@ -2002,9 +2087,10 @@ window.addEventListener("message", (event) => {
         } else {
             // Legacy format: flat cards array
 
-            columns = msg.payload.columns || [];
-            const cards = msg.payload.cards || [];
-            
+            // Validate arrays
+            columns = Array.isArray(msg.payload.columns) ? msg.payload.columns : [];
+            const cards = Array.isArray(msg.payload.cards) ? msg.payload.cards : [];
+
             // Distribute cards into columns
             for (const col of ['ready', 'in_progress', 'blocked', 'closed']) {
                 columnState[col] = {
@@ -2015,14 +2101,19 @@ window.addEventListener("message", (event) => {
                     loading: false
                 };
             }
-            
+
             for (const card of cards) {
+                // Validate card is an object with required properties
+                if (!card || typeof card !== 'object' || !card.id) {
+                    console.warn('Skipping invalid card:', card);
+                    continue;
+                }
                 const col = columnForCard(card);
                 if (columnState[col]) {
                     columnState[col].cards.push(card);
                 }
             }
-            
+
             // Update counts
             for (const col of ['ready', 'in_progress', 'blocked', 'closed']) {
                 columnState[col].totalCount = columnState[col].cards.length;
@@ -2118,28 +2209,43 @@ window.addEventListener("message", (event) => {
     }
 
     if (msg.type === "board.columnData") {
-
-        const { column, cards, offset, totalCount, hasMore } = msg.payload;
-        
-        if (!columnState[column]) {
-
+        // Validate payload structure
+        if (!msg.payload || typeof msg.payload !== 'object') {
+            console.error('Invalid board.columnData payload: missing or non-object payload');
             return;
         }
-        
-        // Update specific column
-        if (offset === 0) {
-            // Replace cards (refresh)
 
+        const { column, cards, offset, totalCount, hasMore } = msg.payload;
+
+        // Validate column is a valid key
+        if (!columnState[column]) {
+            console.warn('Invalid column in board.columnData:', column);
+            return;
+        }
+
+        // Validate cards is an array
+        if (!Array.isArray(cards)) {
+            console.error('Invalid board.columnData: cards is not an array');
+            return;
+        }
+
+        // Validate numeric fields
+        const validOffset = typeof offset === 'number' ? offset : 0;
+        const validTotalCount = typeof totalCount === 'number' ? totalCount : cards.length;
+        const validHasMore = Boolean(hasMore);
+
+        // Update specific column
+        if (validOffset === 0) {
+            // Replace cards (refresh)
             columnState[column].cards = cards;
         } else {
             // Append cards (loading more)
-
             columnState[column].cards = [...columnState[column].cards, ...cards];
         }
-        
-        columnState[column].offset = offset + cards.length;
-        columnState[column].totalCount = totalCount;
-        columnState[column].hasMore = hasMore;
+
+        columnState[column].offset = validOffset + cards.length;
+        columnState[column].totalCount = validTotalCount;
+        columnState[column].hasMore = validHasMore;
         columnState[column].loading = false;
         
 
@@ -2261,6 +2367,237 @@ async function loadFullIssue(issueId) {
         toast('Failed to load issue details: ' + error.message);
         throw error;
     }
+}
+
+// ============================================================================
+// STATIC FORM POPULATION - Populates the static HTML form with card data
+// ============================================================================
+function populateStaticEditForm(form, card, isCreateMode) {
+    // Helper functions
+    const setVal = (sel, val) => { const el = form.querySelector(sel); if (el) el.value = val ?? ''; };
+    const setChk = (sel, val) => { const el = form.querySelector(sel); if (el) el.checked = !!val; };
+    const setHtml = (sel, html) => { const el = form.querySelector(sel); if (el) el.innerHTML = DOMPurify.sanitize(html, purifyConfig); };
+    
+    // Header
+    const header = form.querySelector('#editFormHeader');
+    if (header) {
+        if (isCreateMode) {
+            header.innerHTML = 'Create New Issue';
+        } else {
+            header.innerHTML = `Edit Issue <span style="color: var(--muted); font-weight: normal; font-size: 14px;">${escapeHtml(card.id)}</span>`;
+        }
+    }
+    
+    // Basic fields
+    setVal('#editTitle', card.title);
+    setVal('#editStatus', card.status || 'open');
+    setVal('#editType', card.issue_type || 'task');
+    setVal('#editPriority', card.priority ?? 2);
+    setVal('#editAssignee', card.assignee);
+    setVal('#editEst', card.estimated_minutes);
+    setVal('#editExtRef', card.external_ref);
+    setVal('#editDueAt', toLocalDateTimeInput(card.due_at));
+    setVal('#editDeferUntil', toLocalDateTimeInput(card.defer_until));
+    setVal('#editDesc', card.description);
+    setVal('#editAC', card.acceptance_criteria);
+    setVal('#editDesign', card.design);
+    setVal('#editNotes', card.notes);
+    setChk('#editPinned', card.pinned);
+    setChk('#editTemplate', card.is_template);
+    setChk('#editEphemeral', card.ephemeral);
+    
+    // Save button text
+    const btnSave = form.querySelector('#btnSave');
+    if (btnSave) btnSave.textContent = isCreateMode ? 'Create Issue' : 'Save Changes';
+    
+    // Create mode comment note
+    const commentNote = form.querySelector('#createModeCommentNote');
+    if (commentNote) commentNote.classList.toggle('hidden', !isCreateMode);
+    
+    // Labels
+    refreshStaticFormLabels(form, card);
+    
+    // Relationships
+    refreshStaticFormRelationships(form, card);
+    
+    // Comments
+    refreshStaticFormComments(form, card);
+    
+    // Advanced metadata
+    refreshStaticFormAdvancedMetadata(form, card);
+    
+    // Issue datalist
+    refreshStaticFormIssueDatalist(form, card);
+    
+    // Footer
+    const footer = form.querySelector('#editFormFooter');
+    if (footer) {
+        if (isCreateMode) {
+            footer.innerHTML = '<span>ID: Assigned on create</span><span>Created: Not yet created</span><span>Updated: Not yet created</span>';
+        } else {
+            let html = `<span>ID: ${escapeHtml(card.id)}</span>`;
+            html += `<span>Created: ${new Date(card.created_at).toLocaleString()}</span>`;
+            html += `<span>Updated: ${new Date(card.updated_at).toLocaleString()}</span>`;
+            if (card.closed_at) html += `<span>Closed: ${new Date(card.closed_at).toLocaleString()}</span>`;
+            footer.innerHTML = html;
+        }
+    }
+    
+    // Reset markdown previews
+    form.querySelectorAll('.toggle-preview').forEach(btn => {
+        const targetId = btn.dataset.target;
+        const textarea = form.querySelector(`#${targetId}`);
+        const preview = form.querySelector(`#${targetId}-preview`);
+        if (textarea && preview) {
+            textarea.classList.remove('hidden');
+            preview.classList.add('hidden');
+            btn.textContent = 'Preview';
+        }
+    });
+}
+
+// Helper: format dependency for display
+function formatStaticFormDep(dep) {
+    const idSuffix = dep.id ? dep.id.slice(-20) : '';
+    const title = dep.title || '';
+    return `${escapeHtml(idSuffix)}: ${escapeHtml(title)}`;
+}
+
+function refreshStaticFormLabels(form, card) {
+    const container = form.querySelector('#labelsContainer');
+    if (!container) return;
+    
+    const labels = card.labels || [];
+    if (labels.length === 0) {
+        container.innerHTML = '<span class="muted-note">None</span>';
+        return;
+    }
+    
+    const html = labels.map(l => `
+        <span class="label-badge">#${escapeHtml(l)}<span class="remove-label" data-label="${escapeHtml(l)}">&times;</span></span>
+    `).join('');
+    container.innerHTML = DOMPurify.sanitize(html, purifyConfig);
+}
+
+function refreshStaticFormRelationships(form, card) {
+    // Parent
+    const parentDisplay = form.querySelector('#parentDisplay');
+    const removeParentBtn = form.querySelector('#removeParent');
+    const parentAddRow = form.querySelector('#parentAddRow');
+    
+    if (parentDisplay) {
+        if (card.parent) {
+            parentDisplay.innerHTML = formatStaticFormDep(card.parent);
+            parentDisplay.classList.remove('none');
+            if (removeParentBtn) removeParentBtn.classList.remove('hidden');
+            if (parentAddRow) parentAddRow.classList.add('hidden');
+        } else {
+            parentDisplay.textContent = 'None';
+            parentDisplay.classList.add('none');
+            if (removeParentBtn) removeParentBtn.classList.add('hidden');
+            if (parentAddRow) parentAddRow.classList.remove('hidden');
+        }
+    }
+    
+    // Blocked By
+    const blockedByList = form.querySelector('#blockedByList');
+    if (blockedByList) {
+        const blockers = card.blocked_by || [];
+        if (blockers.length === 0) {
+            blockedByList.innerHTML = '';
+        } else {
+            const html = blockers.map(b => `<li>${formatStaticFormDep(b)} <span class="remove-dep remove-blocker" data-id="${escapeHtml(b.id)}">&times;</span></li>`).join('');
+            blockedByList.innerHTML = DOMPurify.sanitize(html, purifyConfig);
+        }
+    }
+    
+    // Blocks
+    const blocksList = form.querySelector('#blocksList');
+    if (blocksList) {
+        const blocks = card.blocks || [];
+        blocksList.innerHTML = blocks.length === 0 ? '' : DOMPurify.sanitize(blocks.map(b => `<li>${formatStaticFormDep(b)}</li>`).join(''), purifyConfig);
+    }
+    
+    // Children
+    const childrenList = form.querySelector('#childrenList');
+    if (childrenList) {
+        const children = card.children || [];
+        if (children.length === 0) {
+            childrenList.innerHTML = '';
+        } else {
+            const html = children.map(c => `<li>${formatStaticFormDep(c)} <span class="remove-dep remove-child" data-id="${escapeHtml(c.id)}">&times;</span></li>`).join('');
+            childrenList.innerHTML = DOMPurify.sanitize(html, purifyConfig);
+        }
+    }
+}
+
+function refreshStaticFormComments(form, card) {
+    const list = form.querySelector('#commentsList');
+    if (!list) return;
+    
+    const comments = card.comments || [];
+    if (comments.length === 0) {
+        list.innerHTML = '';
+        return;
+    }
+    
+    const html = comments.map(c => `
+        <div class="comment">
+            <div class="comment-header"><span>${escapeHtml(c.author)}</span><span>${new Date(c.created_at).toLocaleString()}</span></div>
+            <div class="comment-body markdown-body">${safeRenderMarkdown(c.text || '')}</div>
+        </div>
+    `).join('');
+    list.innerHTML = DOMPurify.sanitize(html, purifyConfig);
+}
+
+function refreshStaticFormAdvancedMetadata(form, card) {
+    const container = form.querySelector('#advancedMetadata');
+    const content = form.querySelector('#advancedMetadataContent');
+    if (!container || !content) return;
+    
+    const hasData = card.event_kind || card.actor || card.target || card.payload || card.sender || 
+                    card.mol_type || card.role_type || card.rig || card.agent_state || card.last_activity || 
+                    card.hook_bead || card.role_bead || card.await_type || card.await_id || 
+                    card.timeout_ns !== null || card.waiters;
+    
+    if (!hasData) {
+        container.classList.add('hidden');
+        return;
+    }
+    
+    container.classList.remove('hidden');
+    const fields = [
+        ['Event Kind', card.event_kind], ['Actor', card.actor], ['Target', card.target],
+        ['Sender', card.sender], ['Mol Type', card.mol_type], ['Role Type', card.role_type],
+        ['Rig', card.rig], ['Agent State', card.agent_state],
+        ['Last Activity', card.last_activity ? new Date(card.last_activity).toLocaleString() : null],
+        ['Hook Bead', card.hook_bead], ['Role Bead', card.role_bead], ['Await Type', card.await_type],
+        ['Await ID', card.await_id], ['Timeout (ns)', card.timeout_ns], ['Waiters', card.waiters]
+    ];
+    
+    let html = '';
+    for (const [label, value] of fields) {
+        if (value !== null && value !== undefined && value !== '') {
+            html += `<span class="meta-label">${label}:</span><span class="meta-value">${escapeHtml(String(value))}</span>`;
+        }
+    }
+    if (card.payload) html += `<span class="meta-label">Payload:</span><pre>${escapeHtml(card.payload)}</pre>`;
+    content.innerHTML = html;
+}
+
+function refreshStaticFormIssueDatalist(form, card) {
+    const datalist = form.querySelector('#issueIdOptions');
+    if (!datalist) return;
+    
+    const allCards = [];
+    for (const col of ['ready', 'in_progress', 'blocked', 'closed']) {
+        if (columnState[col]?.cards) allCards.push(...columnState[col].cards);
+    }
+    
+    datalist.innerHTML = allCards
+        .filter(c => !card.id || c.id !== card.id)
+        .map(c => `<option value="${escapeHtml(c.id)}" label="${escapeHtml(c.title)}"></option>`)
+        .join('');
 }
 
 async function openDetail(card) {
@@ -2588,8 +2925,9 @@ async function openDetail(card) {
         </div>
     `;
 
-    // Sanitize form HTML content with DOMPurify before setting innerHTML
-    form.innerHTML = DOMPurify.sanitize(formContent, purifyConfig);
+    // STATIC FORM FIX: Instead of rebuilding HTML, populate static form fields
+    // The form HTML is now defined statically in webview.ts
+    populateStaticEditForm(form, card, isCreateMode);
 
     detailDirty = false;
     const markDirty = () => { detailDirty = true; };
@@ -2708,23 +3046,6 @@ async function openDetail(card) {
             toast("Title is required");
         }
     };
-
-    /**
-     * Safely render markdown with size limits to prevent DoS
-     * Aligned with schema validation (IssueCreateSchema/IssueUpdateSchema in types.ts)
-     * @param {string} text - The markdown text to render
-     * @returns {string} - Sanitized HTML or error message if too large
-     */
-    function safeRenderMarkdown(text) {
-        const MAX_MARKDOWN_SIZE = 10000; // 10KB limit (matches backend validation)
-        if (!text) return '';
-        if (text.length > MAX_MARKDOWN_SIZE) {
-            return `<div class="error" style="color: var(--error); padding: 8px; background: rgba(255,0,0,0.1); border-radius: 4px;">
-                Content too large to display (${Math.round(text.length / 1024)}KB). Maximum size: ${Math.round(MAX_MARKDOWN_SIZE / 1024)}KB.
-            </div>`;
-        }
-        return DOMPurify.sanitize(marked.parse(text), purifyConfig);
-    }
 
     function renderCommentsList() {
         if (!card.comments || card.comments.length === 0) {
@@ -3217,7 +3538,7 @@ ${card.design || 'None'}
 
             if (textarea.style.display !== "none") {
                 // Switch to Preview
-                preview.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value), purifyConfig);
+                preview.innerHTML = safeRenderMarkdown(textarea.value);
                 textarea.style.display = "none";
                 preview.style.display = "block";
                 e.target.textContent = "Edit";

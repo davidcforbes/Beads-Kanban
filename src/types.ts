@@ -231,7 +231,7 @@ export type ColumnDataMap = Record<BoardColumnKey, ColumnData>;
 // Zod validation schemas for runtime message validation
 // Strict issue ID format: project.name-suffix (prevents path traversal, XSS, command injection)
 // Must start with alphanumeric, can contain alphanumeric/dots/hyphens, must end with -suffix
-const IssueIdSchema = z.string().regex(
+export const IssueIdSchema = z.string().regex(
   /^[a-z0-9][a-z0-9.-]*-[a-z0-9]+$/i,
   'Invalid issue ID format - must match pattern: project-suffix'
 );

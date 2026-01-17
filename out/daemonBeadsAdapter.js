@@ -50,8 +50,16 @@ class DaemonBeadsAdapter {
     consecutiveFailures = 0;
     circuitOpenedAt = 0;
     circuitRecoveryTimer = null;
+    circuitAutoRetryCount = 0;
     CIRCUIT_FAILURE_THRESHOLD = 5;
     CIRCUIT_RESET_TIMEOUT_MS = 60000; // 1 minute
+    MAX_AUTO_RETRIES = 3;
+    // Column data cache for pagination optimization
+    // WORKAROUND: bd CLI doesn't support --offset, so we cache large result sets
+    // and slice them in memory to avoid repeatedly fetching the same data
+    columnDataCache = new Map();
+    COLUMN_CACHE_TTL_MS = 30000; // 30 seconds
+    COLUMN_CACHE_MAX_SIZE = 1000; // Max items to cache per column
     constructor(workspaceRoot, output) {
         this.workspaceRoot = workspaceRoot;
         this.output = output;
@@ -106,6 +114,17 @@ class DaemonBeadsAdapter {
         }
     }
     /**
+     * Validates a CLI flag value to prevent flag injection attacks
+     * @param value Value to validate
+     * @param fieldName Name of the field for error messages
+     * @throws Error if value starts with hyphen (could be interpreted as CLI flag)
+     */
+    validateFlagValue(value, fieldName) {
+        if (value && typeof value === 'string' && value.startsWith('-')) {
+            throw new Error(`${fieldName} cannot start with hyphen (possible flag injection attempt)`);
+        }
+    }
+    /**
      * Check if the circuit breaker is currently open.
      * Automatically transitions from OPEN to HALF_OPEN after timeout.
      */
@@ -137,6 +156,7 @@ class DaemonBeadsAdapter {
             this.cancelCircuitRecovery();
         }
         this.consecutiveFailures = 0;
+        this.circuitAutoRetryCount = 0; // Reset retry counter on successful recovery
     }
     /**
      * Record a failed batch operation.
@@ -178,17 +198,37 @@ class DaemonBeadsAdapter {
      * This ensures the circuit breaker transitions to HALF_OPEN even if no requests come in.
      */
     scheduleCircuitRecovery() {
+        // Check if we've exceeded maximum auto-retry attempts
+        if (this.circuitAutoRetryCount >= this.MAX_AUTO_RETRIES) {
+            this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Max auto-retries (${this.MAX_AUTO_RETRIES}) reached, giving up automatic recovery`);
+            vscode.window.showWarningMessage('Beads: Unable to auto-recover from errors. Please check the logs and manually reload when ready.', 'View Logs', 'Reload Now').then(action => {
+                if (action === 'View Logs') {
+                    this.output.show();
+                }
+                else if (action === 'Reload Now') {
+                    // Allow manual reload to bypass retry limit
+                    this.circuitBreakerState = 'CLOSED';
+                    this.consecutiveFailures = 0;
+                    this.circuitAutoRetryCount = 0;
+                    this.cancelCircuitRecovery();
+                    vscode.commands.executeCommand('beads.refresh');
+                }
+            });
+            return;
+        }
         // Clear any existing timer
         this.cancelCircuitRecovery();
+        // Increment retry counter
+        this.circuitAutoRetryCount++;
         // Schedule recovery attempt after timeout
         this.circuitRecoveryTimer = setTimeout(() => {
             if (this.circuitBreakerState === 'OPEN') {
-                this.output.appendLine('[DaemonBeadsAdapter] Circuit breaker: Automatic recovery attempt triggered');
+                this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Automatic recovery attempt ${this.circuitAutoRetryCount}/${this.MAX_AUTO_RETRIES} triggered`);
                 // Trigger a board reload which will check the circuit and transition to HALF_OPEN
                 vscode.commands.executeCommand('beads.refresh');
             }
         }, this.CIRCUIT_RESET_TIMEOUT_MS);
-        this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Scheduled automatic recovery in ${this.CIRCUIT_RESET_TIMEOUT_MS / 1000}s`);
+        this.output.appendLine(`[DaemonBeadsAdapter] Circuit breaker: Scheduled automatic recovery ${this.circuitAutoRetryCount}/${this.MAX_AUTO_RETRIES} in ${this.CIRCUIT_RESET_TIMEOUT_MS / 1000}s`);
     }
     /**
      * Cancel any pending circuit recovery timer.
@@ -216,8 +256,10 @@ class DaemonBeadsAdapter {
             let stdout = '';
             let stderr = '';
             let killed = false;
-            // Buffer size limit: 10MB to prevent memory issues
-            const MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+            // Buffer size limit: 50MB to handle large bd list queries
+            // Note: bd list --limit 10000 can produce ~8-12MB of JSON output
+            // With default initialLoadLimit of 100, we use ~100KB
+            const MAX_BUFFER_SIZE = 50 * 1024 * 1024;
             // Set up timeout
             const timeoutHandle = setTimeout(() => {
                 if (!killed) {
@@ -333,6 +375,8 @@ class DaemonBeadsAdapter {
      */
     trackMutation() {
         this.lastMutationTime = Date.now();
+        // Invalidate column data cache on mutation
+        this.columnDataCache.clear();
     }
     /**
      * Track that an interaction (read or write) occurred that might touch the DB file
@@ -457,11 +501,17 @@ class DaemonBeadsAdapter {
      * Uses single bd list query without bd show - expected 100-300ms for 400 issues
      * Returns only essential fields for displaying cards in kanban columns
      */
-    async getBoardMinimal() {
+    /**
+     * Get minimal board data for fast initial load
+     * @param limit Maximum number of issues to load (default: 5000 to stay under 10MB buffer)
+     */
+    async getBoardMinimal(limit = 5000) {
         try {
             this.trackInteraction();
             // Single fast query - no batching needed
-            const issues = await this.execBd(['list', '--json', '--all', '--limit', '10000']);
+            // Note: Default limit of 5000 keeps us safely under the 10MB buffer limit
+            // Callers should pass config.initialLoadLimit to honor user preferences
+            const issues = await this.execBd(['list', '--json', '--all', '--limit', limit.toString()]);
             if (!Array.isArray(issues)) {
                 this.output.appendLine('[DaemonBeadsAdapter] getBoardMinimal: bd list returned non-array');
                 return [];
@@ -794,129 +844,140 @@ class DaemonBeadsAdapter {
     /**
      * Get paginated issues for a specific column.
      * Returns BoardCard[] matching the same format as getBoard().
+     * OPTIMIZATION: Uses column-level caching to avoid repeated fetches for pagination.
      */
     async getColumnData(column, offset = 0, limit = 50) {
         try {
             this.trackInteraction();
+            // Check if we have valid cached data that covers this range
+            const cached = this.columnDataCache.get(column);
+            const now = Date.now();
+            if (cached &&
+                now - cached.timestamp < this.COLUMN_CACHE_TTL_MS &&
+                cached.data.length >= offset + limit) {
+                // Cache hit - slice from cached data
+                this.output.appendLine(`[DaemonBeadsAdapter] Cache hit for ${column} (offset=${offset}, limit=${limit})`);
+                const basicIssues = cached.data.slice(offset, offset + limit);
+                if (basicIssues.length === 0) {
+                    return [];
+                }
+                // Skip to enrichment step below (after the switch statement)
+                return this.enrichColumnIssues(basicIssues);
+            }
+            // Cache miss - fetch data
+            // Strategy: Fetch a larger chunk (up to COLUMN_CACHE_MAX_SIZE) to serve future pagination requests
+            // This turns O(N*M) performance (where N=pages, M=page number) into O(1) for cached pages
+            const fetchLimit = Math.min(Math.max(offset + limit, this.COLUMN_CACHE_MAX_SIZE), this.COLUMN_CACHE_MAX_SIZE);
+            this.output.appendLine(`[DaemonBeadsAdapter] Cache miss for ${column}, fetching ${fetchLimit} items (offset=${offset}, limit=${limit})`);
             let basicIssues;
             switch (column) {
                 case 'ready':
                     // Use bd ready - it returns issues with no blockers
-                    // LIMITATION: bd ready doesn't support --offset, so we fetch offset+limit and slice
-                    // This means for offset=100, limit=50, we fetch 150 rows and discard the first 100
-                    // This is inefficient but necessary until bd CLI adds --offset support.
-                    // This creates O(N) performance degradation where N is the page number.
-                    // Upstream issue needed: Add --offset support to bd list/ready commands.
-                    // Mitigation: The result is sliced in memory below.
-                    if (offset > 500) {
-                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for ready column may cause performance issues`);
-                    }
-                    const readyResult = await this.execBd(['ready', '--json', '--limit', String(offset + limit)]);
-                    basicIssues = Array.isArray(readyResult) ? readyResult.slice(offset, offset + limit) : [];
+                    // WORKAROUND: bd ready doesn't support --offset, so we fetch a large chunk and cache it
+                    // This eliminates the O(N) performance issue for subsequent page requests
+                    const readyResult = await this.execBd(['ready', '--json', '--limit', String(fetchLimit)]);
+                    basicIssues = Array.isArray(readyResult) ? readyResult : [];
                     break;
                 case 'in_progress':
                     // Use bd list with status filter
-                    // LIMITATION: bd list supports --limit but not --offset
-                    // TODO: Add --offset flag to bd CLI for efficient pagination (see beads issue beads-kanban-6u4m)
-                    if (offset > 500) {
-                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for in_progress column may cause performance issues`);
-                    }
-                    const inProgressResult = await this.execBd(['list', '--status=in_progress', '--json', '--limit', String(offset + limit)]);
-                    basicIssues = Array.isArray(inProgressResult) ? inProgressResult.slice(offset, offset + limit) : [];
+                    const inProgressResult = await this.execBd(['list', '--status=in_progress', '--json', '--limit', String(fetchLimit)]);
+                    basicIssues = Array.isArray(inProgressResult) ? inProgressResult : [];
                     break;
                 case 'blocked':
-                    // IMPROVEMENT: Use bd list with appropriate filters instead of bd blocked
-                    // bd blocked fetches ALL issues which is very inefficient for large databases
-                    // Instead, we can use bd list --status=blocked to leverage existing pagination
-                    if (offset > 500) {
-                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for blocked column may cause performance issues`);
-                    }
-                    const blockedResult = await this.execBd(['list', '--status=blocked', '--json', '--limit', String(offset + limit)]);
-                    basicIssues = Array.isArray(blockedResult) ? blockedResult.slice(offset, offset + limit) : [];
+                    // Use bd list --status=blocked for efficient pagination
+                    const blockedResult = await this.execBd(['list', '--status=blocked', '--json', '--limit', String(fetchLimit)]);
+                    basicIssues = Array.isArray(blockedResult) ? blockedResult : [];
                     break;
                 case 'closed':
                     // Use bd list with status filter (supports --limit)
-                    // LIMITATION: bd list supports --limit but not --offset
-                    if (offset > 500) {
-                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for closed column may cause performance issues`);
-                    }
-                    const closedResult = await this.execBd(['list', '--status=closed', '--json', '--limit', String(offset + limit)]);
-                    basicIssues = Array.isArray(closedResult) ? closedResult.slice(offset, offset + limit) : [];
+                    const closedResult = await this.execBd(['list', '--status=closed', '--json', '--limit', String(fetchLimit)]);
+                    basicIssues = Array.isArray(closedResult) ? closedResult : [];
                     break;
                 case 'open':
                     // Use bd list with status filter (supports --limit)
-                    // LIMITATION: bd list supports --limit but not --offset
-                    if (offset > 500) {
-                        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Large offset (${offset}) for open column may cause performance issues`);
-                    }
-                    const openResult = await this.execBd(['list', '--status=open', '--json', '--limit', String(offset + limit)]);
-                    basicIssues = Array.isArray(openResult) ? openResult.slice(offset, offset + limit) : [];
+                    const openResult = await this.execBd(['list', '--status=open', '--json', '--limit', String(fetchLimit)]);
+                    basicIssues = Array.isArray(openResult) ? openResult : [];
                     break;
                 default:
                     throw new Error(`Unknown column: ${column}`);
             }
-            if (basicIssues.length === 0) {
+            // Cache the fetched data for future requests
+            this.columnDataCache.set(column, {
+                data: basicIssues,
+                timestamp: now
+            });
+            // Slice to get the requested page
+            const pageData = basicIssues.slice(offset, offset + limit);
+            if (pageData.length === 0) {
                 return [];
             }
-            // Step 2: Get full details for all issues using bd show (in batches)
-            const issueIds = basicIssues.map((issue) => issue.id);
-            const BATCH_SIZE = 50;
-            const detailedIssues = [];
-            for (let i = 0; i < issueIds.length; i += BATCH_SIZE) {
-                const batch = issueIds.slice(i, i + BATCH_SIZE);
-                try {
-                    const batchResults = await this.execBd(['show', '--json', ...batch]);
-                    if (!Array.isArray(batchResults)) {
-                        throw new Error('Expected array from bd show --json <ids>');
-                    }
-                    detailedIssues.push(...batchResults);
-                    // Record successful batch
-                    this.recordCircuitSuccess();
-                }
-                catch (error) {
-                    // Check circuit breaker before retrying
-                    if (this.isCircuitOpen()) {
-                        this.recordCircuitFailure();
-                        throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
-                    }
-                    // If batch fails, try each issue individually
-                    this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
-                    let batchFailureCount = 0;
-                    for (const id of batch) {
-                        try {
-                            const singleResult = await this.execBd(['show', '--json', id]);
-                            if (Array.isArray(singleResult) && singleResult.length > 0) {
-                                detailedIssues.push(...singleResult);
-                            }
-                        }
-                        catch (singleError) {
-                            batchFailureCount++;
-                            this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
-                        }
-                    }
-                    // Record batch result based on failure rate
-                    if (batchFailureCount === batch.length) {
-                        // Entire batch failed - record as circuit failure
-                        this.recordCircuitFailure();
-                    }
-                    else if (batchFailureCount > 0) {
-                        // Partial failure - don't count as full failure
-                        this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
-                    }
-                    else {
-                        // All succeeded on retry - record success
-                        this.recordCircuitSuccess();
-                    }
-                }
-            }
-            // Map to BoardCard format using existing helper
-            const boardData = this.mapIssuesToBoardData(detailedIssues);
-            return boardData.cards || [];
+            // Enrich the page data with full issue details
+            return this.enrichColumnIssues(pageData);
         }
         catch (error) {
             this.output.appendLine(`[DaemonBeadsAdapter] Failed to get column data for ${column}: ${error instanceof Error ? error.message : String(error)}`);
             return [];
         }
+    }
+    /**
+     * Helper method to enrich basic issue data with full details.
+     * Used by getColumnData to fetch complete issue information.
+     */
+    async enrichColumnIssues(basicIssues) {
+        // Step 2: Get full details for all issues using bd show (in batches)
+        const issueIds = basicIssues.map((issue) => issue.id);
+        const BATCH_SIZE = 50;
+        const detailedIssues = [];
+        for (let i = 0; i < issueIds.length; i += BATCH_SIZE) {
+            const batch = issueIds.slice(i, i + BATCH_SIZE);
+            try {
+                const batchResults = await this.execBd(['show', '--json', ...batch]);
+                if (!Array.isArray(batchResults)) {
+                    throw new Error('Expected array from bd show --json <ids>');
+                }
+                detailedIssues.push(...batchResults);
+                // Record successful batch
+                this.recordCircuitSuccess();
+            }
+            catch (error) {
+                // Check circuit breaker before retrying
+                if (this.isCircuitOpen()) {
+                    this.recordCircuitFailure();
+                    throw new Error('Circuit breaker is open - too many consecutive failures. System will retry automatically in 1 minute.');
+                }
+                // If batch fails, try each issue individually
+                this.output.appendLine(`[DaemonBeadsAdapter] Batch show failed, retrying individually: ${error instanceof Error ? error.message : String(error)}`);
+                let batchFailureCount = 0;
+                for (const id of batch) {
+                    try {
+                        const singleResult = await this.execBd(['show', '--json', id]);
+                        if (Array.isArray(singleResult) && singleResult.length > 0) {
+                            detailedIssues.push(...singleResult);
+                        }
+                    }
+                    catch (singleError) {
+                        batchFailureCount++;
+                        this.output.appendLine(`[DaemonBeadsAdapter] Skipping missing issue: ${id}`);
+                    }
+                }
+                // Record batch result based on failure rate
+                if (batchFailureCount === batch.length) {
+                    // Entire batch failed - record as circuit failure
+                    this.recordCircuitFailure();
+                }
+                else if (batchFailureCount > 0) {
+                    // Partial failure - don't count as full failure
+                    this.consecutiveFailures = Math.max(0, this.consecutiveFailures - 1);
+                }
+                else {
+                    // All succeeded on retry - record success
+                    this.recordCircuitSuccess();
+                }
+            }
+        }
+        // Map to BoardCard format using existing helper
+        const boardData = this.mapIssuesToBoardData(detailedIssues);
+        return boardData.cards || [];
     }
     /**
      * Get paginated table data with server-side filtering and sorting.
@@ -1205,6 +1266,31 @@ class DaemonBeadsAdapter {
         if (!title) {
             throw new Error('Title is required');
         }
+        // Validate all string fields to prevent flag injection
+        this.validateFlagValue(title, 'title');
+        this.validateFlagValue(input.description, 'description');
+        this.validateFlagValue(input.issue_type, 'issue_type');
+        this.validateFlagValue(input.assignee, 'assignee');
+        this.validateFlagValue(input.acceptance_criteria, 'acceptance_criteria');
+        this.validateFlagValue(input.design, 'design');
+        this.validateFlagValue(input.external_ref, 'external_ref');
+        this.validateFlagValue(input.notes, 'notes');
+        this.validateFlagValue(input.due_at, 'due_at');
+        this.validateFlagValue(input.defer_until, 'defer_until');
+        this.validateFlagValue(input.status, 'status');
+        // Validate parent and dependency IDs
+        if (input.parent_id)
+            this.validateIssueId(input.parent_id);
+        if (input.blocked_by_ids) {
+            input.blocked_by_ids.forEach(id => this.validateIssueId(id));
+        }
+        if (input.children_ids) {
+            input.children_ids.forEach(id => this.validateIssueId(id));
+        }
+        // Validate labels don't start with '-'
+        if (input.labels) {
+            input.labels.forEach(label => this.validateFlagValue(label, 'label'));
+        }
         // Build bd create command args
         const args = ['create', '--title', title];
         if (input.description)
@@ -1323,6 +1409,18 @@ class DaemonBeadsAdapter {
      */
     async updateIssue(id, updates) {
         this.validateIssueId(id);
+        // Validate all string fields to prevent flag injection
+        this.validateFlagValue(updates.title, 'title');
+        this.validateFlagValue(updates.description, 'description');
+        this.validateFlagValue(updates.issue_type, 'issue_type');
+        this.validateFlagValue(updates.assignee, 'assignee');
+        this.validateFlagValue(updates.acceptance_criteria, 'acceptance_criteria');
+        this.validateFlagValue(updates.design, 'design');
+        this.validateFlagValue(updates.external_ref, 'external_ref');
+        this.validateFlagValue(updates.notes, 'notes');
+        this.validateFlagValue(updates.due_at, 'due_at');
+        this.validateFlagValue(updates.defer_until, 'defer_until');
+        this.validateFlagValue(updates.status, 'status');
         // WORKAROUND: Use --no-daemon to bypass daemon bug with --due flag
         // TODO: Test if this is still needed with bd 0.47.1+ and remove if fixed
         const args = ['update', id, '--no-daemon'];
@@ -1385,8 +1483,13 @@ class DaemonBeadsAdapter {
     async addComment(issueId, text, author) {
         try {
             this.validateIssueId(issueId);
+            // Validate author doesn't start with '-' to prevent flag injection
+            if (author.startsWith('-')) {
+                throw new Error('Author name cannot start with hyphen');
+            }
+            // Use '--' separator before user-controlled text to prevent flag injection
             // bd comments add expects text as positional argument, not --text flag
-            await this.execBd(['comments', 'add', issueId, text, '--author', author]);
+            await this.execBd(['comments', 'add', issueId, '--', text, '--author', author]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }
@@ -1402,7 +1505,8 @@ class DaemonBeadsAdapter {
     async addLabel(issueId, label) {
         try {
             this.validateIssueId(issueId);
-            await this.execBd(['label', 'add', issueId, label]);
+            // Use '--' separator before user-controlled label to prevent flag injection
+            await this.execBd(['label', 'add', issueId, '--', label]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }
@@ -1418,7 +1522,8 @@ class DaemonBeadsAdapter {
     async removeLabel(issueId, label) {
         try {
             this.validateIssueId(issueId);
-            await this.execBd(['label', 'remove', issueId, label]);
+            // Use '--' separator before user-controlled label to prevent flag injection
+            await this.execBd(['label', 'remove', issueId, '--', label]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }
@@ -1435,7 +1540,12 @@ class DaemonBeadsAdapter {
         try {
             this.validateIssueId(issueId);
             this.validateIssueId(dependsOnId);
-            await this.execBd(['dep', 'add', issueId, dependsOnId, '--type', type]);
+            // Validate type is one of the allowed values to prevent injection
+            if (type !== 'parent-child' && type !== 'blocks') {
+                throw new Error('Invalid dependency type');
+            }
+            // Use '--' separator before issue IDs for defense in depth
+            await this.execBd(['dep', 'add', '--', issueId, dependsOnId, '--type', type]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }
@@ -1452,7 +1562,8 @@ class DaemonBeadsAdapter {
         try {
             this.validateIssueId(issueId);
             this.validateIssueId(dependsOnId);
-            await this.execBd(['dep', 'remove', issueId, dependsOnId]);
+            // Use '--' separator before issue IDs for defense in depth
+            await this.execBd(['dep', 'remove', '--', issueId, dependsOnId]);
             // Track mutation and invalidate cache
             this.trackMutation();
         }
@@ -1461,6 +1572,18 @@ class DaemonBeadsAdapter {
             this.output.appendLine(`[DaemonBeadsAdapter] ERROR: ${msg}`);
             throw new Error(msg);
         }
+    }
+    /**
+     * Update the workspace root path (for switching repositories)
+     * @param newWorkspaceRoot New workspace root path
+     */
+    setWorkspaceRoot(newWorkspaceRoot) {
+        this.workspaceRoot = newWorkspaceRoot;
+        this.output.appendLine(`[DaemonBeadsAdapter] Workspace root changed to: ${newWorkspaceRoot}`);
+        // Reset circuit breaker state for new repository
+        this.circuitBreakerState = 'CLOSED';
+        this.consecutiveFailures = 0;
+        this.cancelCircuitRecovery();
     }
     /**
      * Cleanup resources

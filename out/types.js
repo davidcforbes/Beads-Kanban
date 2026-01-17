@@ -1,14 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BoardLoadMoreSchema = exports.BoardLoadColumnSchema = exports.DependencySchema = exports.LabelSchema = exports.CommentAddSchema = exports.SetStatusSchema = exports.IssueCreateSchema = exports.IssueUpdateSchema = void 0;
+exports.BoardLoadMoreSchema = exports.BoardLoadColumnSchema = exports.DependencySchema = exports.LabelSchema = exports.CommentAddSchema = exports.SetStatusSchema = exports.IssueCreateSchema = exports.IssueUpdateSchema = exports.IssueIdSchema = void 0;
 const zod_1 = require("zod");
 // Zod validation schemas for runtime message validation
 // Strict issue ID format: project.name-suffix (prevents path traversal, XSS, command injection)
 // Must start with alphanumeric, can contain alphanumeric/dots/hyphens, must end with -suffix
-const IssueIdSchema = zod_1.z.string().regex(/^[a-z0-9][a-z0-9.-]*-[a-z0-9]+$/i, 'Invalid issue ID format - must match pattern: project-suffix');
+exports.IssueIdSchema = zod_1.z.string().regex(/^[a-z0-9][a-z0-9.-]*-[a-z0-9]+$/i, 'Invalid issue ID format - must match pattern: project-suffix');
 const BoardColumnKeySchema = zod_1.z.enum(['ready', 'open', 'in_progress', 'blocked', 'closed']);
 exports.IssueUpdateSchema = zod_1.z.object({
-    id: IssueIdSchema,
+    id: exports.IssueIdSchema,
     updates: zod_1.z.object({
         title: zod_1.z.string().max(500).optional(),
         description: zod_1.z.string().max(10000).optional(),
@@ -48,21 +48,21 @@ exports.IssueCreateSchema = zod_1.z.object({
     children_ids: zod_1.z.array(zod_1.z.string().max(100)).optional()
 });
 exports.SetStatusSchema = zod_1.z.object({
-    id: IssueIdSchema,
+    id: exports.IssueIdSchema,
     status: zod_1.z.enum(['open', 'in_progress', 'blocked', 'closed'])
 });
 exports.CommentAddSchema = zod_1.z.object({
-    id: IssueIdSchema,
+    id: exports.IssueIdSchema,
     text: zod_1.z.string().min(1).max(10000),
     author: zod_1.z.string().max(100)
 });
 exports.LabelSchema = zod_1.z.object({
-    id: IssueIdSchema,
+    id: exports.IssueIdSchema,
     label: zod_1.z.string().min(1).max(100)
 });
 exports.DependencySchema = zod_1.z.object({
-    id: IssueIdSchema,
-    otherId: IssueIdSchema,
+    id: exports.IssueIdSchema,
+    otherId: exports.IssueIdSchema,
     type: zod_1.z.enum(['blocks', 'parent-child']).optional()
 });
 // Schemas for incremental loading messages
