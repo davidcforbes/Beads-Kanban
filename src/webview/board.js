@@ -448,8 +448,8 @@ function safe(str) {
 // Only allows alphanumeric, hyphens, and underscores
 function sanitizeClassName(cls) {
     if (!cls) return '';
-    // Allow only safe characters in class names
-    const safe = String(cls).replace(/[^a-zA-Z0-9_-]/g, '');
+    // Allow only safe characters in class names (including spaces for multiple classes)
+    const safe = String(cls).replace(/[^a-zA-Z0-9_\- ]/g, '');
     // Prevent classes that start with numbers or hyphens followed by numbers
     if (safe && !/^-?\d/.test(safe)) {
         return safe;
