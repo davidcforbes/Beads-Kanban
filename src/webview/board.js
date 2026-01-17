@@ -418,9 +418,9 @@ function hideLoading() {
 
 // Configure DOMPurify for safe HTML sanitization
 const purifyConfig = {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
-    ALLOWED_ATTR: ['href', 'title', 'class'],
-    ALLOW_DATA_ATTR: false,
+    ALLOWED_TAGS: ['div', 'span', 'p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'button', 'label', 'select', 'option', 'input', 'textarea', 'form'],
+    ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'type', 'value', 'selected', 'disabled', 'style', 'data-column-id', 'data-id', 'data-label', 'data-full-id', 'placeholder', 'rows', 'required', 'for'],
+    ALLOW_DATA_ATTR: true,
     // Prevent XSS via javascript: URIs - only allow safe protocols
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
 };
