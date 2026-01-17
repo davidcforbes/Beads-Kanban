@@ -449,26 +449,24 @@ body {
     outline: none;
 }
 
-.dialogForm {
-    padding: 14px;
-    min-width: 480px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
 #detailDialog {
     width: 900px;
     height: 85vh;
     max-width: 95vw;
     max-height: 95vh;
     overflow: hidden;
-    /* Form handles scroll */
+    display: flex;
+    flex-direction: column;
 }
 
-/* Ensure contents can scroll if needed, but main layout is fixed */
-#detailDialog form {
+.dialogForm {
+    padding: 14px;
+    min-width: 480px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .dialogForm input,
