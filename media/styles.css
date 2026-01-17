@@ -415,6 +415,12 @@ body {
     outline-offset: 2px;
 }
 
+.card.selected {
+    border: 2px solid var(--vscode-focusBorder);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 8px rgba(0, 122, 204, 0.3);
+}
+
 .cardTitle {
     font-weight: 600;
     margin-bottom: 6px;
@@ -448,7 +454,7 @@ body {
     min-width: 480px;
     display: flex;
     flex-direction: column;
-    height: 100%;
+    min-height: 0;
 }
 
 #detailDialog {

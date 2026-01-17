@@ -35,8 +35,30 @@ const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 function setupBoardEventDelegation() {
     if (!boardEl) return;
 
-    // Handle click events on cards
+    let selectedCard = null;
+
+    // Handle single click events on cards - highlight/select only
     boardEl.addEventListener('click', (e) => {
+        // Find the closest .card element
+        const cardEl = e.target.closest('.card');
+        if (!cardEl) return;
+
+        const cardId = cardEl.dataset.id;
+        if (!cardId) return;
+
+        // Remove previous selection
+        if (selectedCard) {
+            selectedCard.classList.remove('selected');
+        }
+
+        // Highlight the clicked card
+        cardEl.classList.add('selected');
+        selectedCard = cardEl;
+        cardEl.focus(); // Focus for keyboard navigation
+    });
+
+    // Handle double-click events on cards - open edit form
+    boardEl.addEventListener('dblclick', (e) => {
         // Find the closest .card element
         const cardEl = e.target.closest('.card');
         if (!cardEl) return;
@@ -54,12 +76,12 @@ function setupBoardEventDelegation() {
         openDetail(card);
     });
 
-    // Handle keyboard events on cards (Enter and Space)
+    // Handle keyboard events on cards (Enter opens edit form)
     boardEl.addEventListener('keydown', (e) => {
         // Only handle if target is a card
         if (!e.target.classList.contains('card')) return;
 
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === 'Enter') {
             e.preventDefault();
 
             const cardId = e.target.dataset.id;
