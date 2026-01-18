@@ -455,6 +455,10 @@ body {
     max-width: 95vw;
     max-height: 95vh;
     overflow: hidden;
+}
+
+/* Only display as flex when the dialog is actually open */
+#detailDialog[open] {
     display: flex;
     flex-direction: column;
 }
@@ -1460,5 +1464,335 @@ main {
 
     .actionButtons .btn {
         width: 100%;
+    }
+}
+
+/* ========================================
+   Static Edit Form Styles (v2.0.2)
+   ======================================== */
+
+.edit-form-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+
+/* Form Sections */
+.form-section {
+    margin-top: 8px;
+}
+
+.form-section-bordered {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.section-label {
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.section-label.clickable {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Inline Add Rows (for tags, relationships) */
+.inline-add-row {
+    display: flex;
+    gap: 4px;
+    max-width: 100%;
+    margin-top: 4px;
+}
+
+.inline-input {
+    flex: 1;
+    margin: 0 !important;
+    font-size: 12px;
+    padding: 4px 8px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Flags Row */
+.flags-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.flag-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.flag-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Labels/Tags Container */
+.labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px 0;
+    min-height: 24px;
+}
+
+.label-badge {
+    background: var(--bg2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.label-badge .remove-label {
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.label-badge .remove-label:hover {
+    opacity: 1;
+    color: var(--error);
+}
+
+/* Relationship Sections */
+.relationship-group {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.relationship-label {
+    margin-right: 4px;
+}
+
+.relationship-value {
+    color: var(--vscode-editor-foreground);
+}
+
+.relationship-value.none {
+    font-style: italic;
+    color: var(--muted);
+}
+
+.remove-link {
+    cursor: pointer;
+    color: var(--error);
+    margin-left: 4px;
+    font-size: 11px;
+}
+
+.remove-link:hover {
+    text-decoration: underline;
+}
+
+.relationship-list {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 11px;
+    margin-bottom: 4px;
+    list-style: disc;
+}
+
+.relationship-list:empty::after {
+    content: "None";
+    font-style: italic;
+    color: var(--muted);
+    display: block;
+    margin-left: -16px;
+    list-style: none;
+}
+
+.relationship-list li {
+    margin-bottom: 2px;
+}
+
+.relationship-list .remove-dep {
+    cursor: pointer;
+    color: var(--error);
+    margin-left: 4px;
+}
+
+.relationship-list .remove-dep:hover {
+    text-decoration: underline;
+}
+
+/* Advanced Metadata Grid */
+.metadata-grid {
+    margin-top: 8px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    font-size: 11px;
+}
+
+.metadata-grid .meta-label {
+    color: var(--muted);
+}
+
+.metadata-grid .meta-value {
+    word-break: break-word;
+}
+
+.metadata-grid pre {
+    margin: 0;
+    font-size: 10px;
+    overflow-x: auto;
+    max-width: 100%;
+    background: rgba(0,0,0,0.2);
+    padding: 4px;
+    border-radius: 3px;
+}
+
+/* Comments Section */
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.comments-list:empty::after {
+    content: "No comments yet.";
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+}
+
+.comment {
+    padding: 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.comment-header {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.comment-body {
+    font-size: 13px;
+}
+
+.comment-add-row {
+    display: flex;
+    gap: 8px;
+}
+
+.comment-input {
+    flex: 1;
+    resize: vertical;
+    margin: 0 !important;
+}
+
+.muted-note {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+/* Form Actions */
+.form-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.actions-left,
+.actions-right {
+    display: flex;
+    gap: 8px;
+}
+
+/* Form Footer */
+.form-footer {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+/* Small button variant */
+.btn-small {
+    padding: 2px 8px;
+    font-size: 11px;
+}
+
+/* Hidden utility class */
+.hidden {
+    display: none !important;
+}
+
+/* Responsive adjustments for Edit Form */
+@media (max-width: 700px) {
+    #detailDialog {
+        width: 98vw;
+        max-width: 98vw;
+    }
+    
+    .form-row-multi {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .form-group,
+    .form-group-large {
+        width: 100%;
+    }
+    
+    .flags-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .actions-left,
+    .actions-right {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 500px) {
+    .dialogForm {
+        padding: 10px;
+        min-width: unset;
+    }
+    
+    .markdown-field-editor,
+    .markdown-field-preview {
+        min-height: 60px;
+        height: 80px;
     }
 }
