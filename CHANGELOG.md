@@ -5,6 +5,53 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-01-17
+
+### 🐛 Bug Fixes
+
+- **Dialog visibility bug**: Fixed Edit Issue dialog being visible on page load even when not open
+  - Root cause: CSS `display: flex` was overriding native `<dialog>` hidden behavior
+  - Solution: Only apply `display: flex` when dialog has `[open]` attribute
+
+### 🔧 Code Quality
+
+- **ESLint compliance**: Fixed all 152 ESLint errors and warnings
+  - Created `.eslintrc.json` with project-specific configuration
+  - Replaced all `any` types with `unknown` + proper type assertions
+  - Added test file exceptions (allow `any` in test files)
+  - Fixed auto-fixable issues (curly braces, semicolons)
+
+- **TypeScript type safety**: Resolved type conflicts between ESLint and TypeScript
+  - Added comprehensive type assertions for CLI result handling
+  - Implemented proper type guards for dependency extraction
+  - Fixed all compilation errors while maintaining ESLint compliance
+
+### 📚 Documentation
+
+- **Marketplace publishing**: Added comprehensive publishing guide to CLAUDE.md
+  - Azure DevOps account requirements
+  - Personal Access Token (PAT) setup
+  - Publishing workflow and checklist
+  - Version management requirements
+
+- **Development patterns**: Documented common bug patterns and solutions
+  - Dialog visibility issues with native `<dialog>` elements
+  - TypeScript vs ESLint type conflict resolution strategies
+  - Type assertion patterns for `unknown` to typed object conversions
+
+- **Build instructions**: Added packaging workflow documentation
+  - PowerShell requirement for Windows (Git Bash has issues)
+  - Version synchronization between package.json and webview.ts
+  - Common packaging issues and solutions
+
+### 🔨 Fixed Issues
+
+- Fixed version badge in README.md (1.0.5 → 2.0.5)
+- Updated marketplace installation instructions
+- Added VS Code version badge
+
+---
+
 ## [2.0.0] - 2026-01-16
 
 ### 🚨 BREAKING CHANGES
