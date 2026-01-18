@@ -91,6 +91,7 @@ export class DaemonManager {
     // are safe and common in legitimate paths like "Program Files (x86)"
 
     // Block control characters (including null bytes and newlines) that could enable injection
+    // eslint-disable-next-line no-control-regex
     if (/[\0-\x1F\x7F]/.test(normalized)) {
       throw new Error('Invalid workspace root: path contains control characters');
     }

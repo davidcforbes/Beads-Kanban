@@ -30,14 +30,14 @@ type WebMsg =
   | { type: "board.loadMinimal"; requestId: string }
   | { type: "board.loadColumn"; requestId: string; payload: { column: BoardColumnKey; offset: number; limit: number } }
   | { type: "board.loadMore"; requestId: string; payload: { column: BoardColumnKey } }
-  | { type: "table.loadPage"; requestId: string; payload: { filters: any; sorting: Array<{ id: string; dir: 'asc' | 'desc' }>; offset: number; limit: number } }
+  | { type: "table.loadPage"; requestId: string; payload: { filters: { search?: string; priority?: string; type?: string; status?: string; assignee?: string; labels?: string[] }; sorting: Array<{ id: string; dir: 'asc' | 'desc' }>; offset: number; limit: number } }
   | { type: "repo.select"; requestId: string }
   | { type: "issue.create"; requestId: string; payload: { title: string; description?: string } }
   | { type: "issue.move"; requestId: string; payload: { id: string; toColumn: BoardColumnKey } }
   | { type: "issue.getFull"; requestId: string; payload: { id: string } }
   | { type: "issue.addToChat"; requestId: string; payload: { text: string } }
   | { type: "issue.copyToClipboard"; requestId: string; payload: { text: string } }
-  | { type: "issue.update"; requestId: string; payload: { id: string; updates: any } }
+  | { type: "issue.update"; requestId: string; payload: { id: string; updates: unknown } }
   | { type: "issue.addComment"; requestId: string; payload: { id: string; text: string; author?: string } }
   | { type: "issue.addLabel"; requestId: string; payload: { id: string; label: string } }
   | { type: "issue.removeLabel"; requestId: string; payload: { id: string; label: string } }
@@ -50,7 +50,7 @@ type ExtMsg =
   | { type: "board.columnData"; requestId: string; payload: { column: BoardColumnKey; cards: BoardCard[]; offset: number; totalCount: number; hasMore: boolean } }
   | { type: "table.pageData"; requestId: string; payload: { cards: BoardCard[]; offset: number; totalCount: number; hasMore: boolean } }
   | { type: "issue.full"; requestId: string; payload: { card: FullCard } }
-  | { type: "mutation.ok"; requestId: string; payload?: any }
+  | { type: "mutation.ok"; requestId: string; payload?: unknown }
   | { type: "mutation.error"; requestId: string; error: string };
 
 // Size limits for text operations
@@ -79,6 +79,7 @@ function sanitizeForCSV(text: string): string {
 
   // Replace control characters (including tabs, newlines, null bytes) with spaces
   // This prevents cell splitting and tab-prefixed formula injection
+  // eslint-disable-next-line no-control-regex
   let sanitized = text.replace(/[\x00-\x1F\x7F]/g, ' ');
 
   // Check for formula-triggering characters at start: =, +, -, @, |, whitespace
@@ -160,8 +161,6 @@ export function activate(context: vscode.ExtensionContext) {
   // Track active panels and polling state (moved here for accessibility)
   let activePanelCount = 0;
   let pollInterval: NodeJS.Timeout | null = null;
-  let startDaemonPolling: (() => void) | undefined;
-  let stopDaemonPolling: (() => void) | undefined;
 
   const ensureDaemonManager = (): DaemonManager | null => {
     const ws = vscode.workspace.workspaceFolders?.[0];
@@ -241,13 +240,13 @@ export function activate(context: vscode.ExtensionContext) {
     return daemonManager;
   };
 
-  startDaemonPolling = () => {
-    if (pollInterval || !updateDaemonStatus) return; // Already polling or not initialized
+  const startDaemonPolling = () => {
+    if (pollInterval || !updateDaemonStatus) {return;} // Already polling or not initialized
     updateDaemonStatus(); // Initial check
     pollInterval = setInterval(updateDaemonStatus, 10000);
   };
 
-  stopDaemonPolling = () => {
+  const stopDaemonPolling = () => {
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;
@@ -279,7 +278,7 @@ export function activate(context: vscode.ExtensionContext) {
         placeHolder: "Select daemon action"
       });
 
-      if (!selected) return;
+      if (!selected) {return;}
 
       try {
         switch (selected.action) {
@@ -294,7 +293,7 @@ export function activate(context: vscode.ExtensionContext) {
           case "start": {
             await manager.start();
             vscode.window.showInformationMessage("Daemon started");
-            updateDaemonStatus && updateDaemonStatus();
+            updateDaemonStatus?.();
             break;
           }
           case "list": {
@@ -319,13 +318,13 @@ export function activate(context: vscode.ExtensionContext) {
           case "restart": {
             await manager.restart();
             vscode.window.showInformationMessage("Daemon restarted");
-            updateDaemonStatus && updateDaemonStatus();
+            updateDaemonStatus?.();
             break;
           }
           case "stop": {
             await manager.stop();
             vscode.window.showInformationMessage("Daemon stopped");
-            updateDaemonStatus && updateDaemonStatus();
+            updateDaemonStatus?.();
             break;
           }
           case "logs": {
@@ -434,11 +433,11 @@ export function activate(context: vscode.ExtensionContext) {
         const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
 
         // Phase 1-3: Prefer fast minimal loading if available
-        const supportsFastLoading = typeof (adapter as any).getBoardMinimal === 'function';
+        const supportsFastLoading = typeof (adapter as DaemonBeadsAdapter).getBoardMinimal === 'function';
 
         if (supportsFastLoading) {
           output.appendLine(`[Extension] Using fast loading path (getBoardMinimal) with limit: ${initialLoadLimit}`);
-          const cards = await (adapter as any).getBoardMinimal(initialLoadLimit);
+          const cards = await (adapter as DaemonBeadsAdapter).getBoardMinimal(initialLoadLimit);
           output.appendLine(`[Extension] Loaded ${cards.length} minimal cards for refresh`);
 
           // Check cancellation before posting
@@ -665,7 +664,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const handleTableLoadPage = async (
       requestId: string,
-      filters: any,
+      filters: { search?: string; priority?: string; type?: string; status?: string; assignee?: string; labels?: string[] },
       sorting: Array<{ id: string; dir: 'asc' | 'desc' }>,
       offset: number,
       limit: number
@@ -712,7 +711,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Set up message handler BEFORE setting HTML to avoid race condition
     panel.webview.onDidReceiveMessage(async (msg: WebMsg) => {
       output.appendLine(`[Extension] Received message: ${msg?.type} (requestId: ${msg?.requestId})`);
-      if (!msg?.type || !msg.requestId) return;
+      if (!msg?.type || !msg.requestId) {return;}
 
       if (msg.type === "board.load" || msg.type === "board.refresh") {
         sendBoard(msg.requestId);
@@ -734,7 +733,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (msg.type === "board.loadMinimal") {
         try {
           // Check if adapter supports fast loading
-          if (typeof (adapter as any).getBoardMinimal !== 'function') {
+          if (typeof (adapter as DaemonBeadsAdapter).getBoardMinimal !== 'function') {
             post({ type: "mutation.error", requestId: msg.requestId, error: "Adapter does not support fast minimal loading. Please enable daemon mode or update your adapter." });
             return;
           }
@@ -744,7 +743,7 @@ export function activate(context: vscode.ExtensionContext) {
           const initialLoadLimit = config.get<number>('initialLoadLimit', 100);
 
           output.appendLine(`[Extension] Loading minimal board data with limit: ${initialLoadLimit}`);
-          const cards = await (adapter as any).getBoardMinimal(initialLoadLimit);
+          const cards = await (adapter as DaemonBeadsAdapter).getBoardMinimal(initialLoadLimit);
           output.appendLine(`[Extension] Loaded ${cards.length} minimal cards`);
           
           // Check cancellation before posting
@@ -774,13 +773,13 @@ export function activate(context: vscode.ExtensionContext) {
           }
           
           // Check if adapter supports fast loading
-          if (typeof (adapter as any).getIssueFull !== 'function') {
+          if (typeof (adapter as DaemonBeadsAdapter).getIssueFull !== 'function') {
             post({ type: "mutation.error", requestId: msg.requestId, error: "Adapter does not support full issue loading. Please enable daemon mode or update your adapter." });
             return;
           }
           
           output.appendLine(`[Extension] Loading full details for issue ${issueId}`);
-          const card = await (adapter as any).getIssueFull(issueId);
+          const card = await (adapter as DaemonBeadsAdapter).getIssueFull(issueId);
           output.appendLine(`[Extension] Loaded full card for ${issueId}`);
           
           // Validate markdown content (defense-in-depth)
@@ -858,7 +857,7 @@ export function activate(context: vscode.ExtensionContext) {
               output.appendLine(`[Extension] Error loading board after repo switch: ${err}`);
               post({ type: "mutation.error", requestId: msg.requestId, error: "Failed to load new repository" });
             }
-          } catch (err) {
+          } catch {
             vscode.window.showErrorMessage(`Selected folder does not contain a .beads directory.`);
             post({ type: "mutation.error", requestId: msg.requestId, error: "No .beads directory found" });
           }
@@ -1054,7 +1053,7 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        post({ type: "mutation.error", requestId: (msg as any).requestId, error: `Unknown message type: ${(msg as any).type}` });
+        post({ type: "mutation.error", requestId: (msg as { requestId: string; type: string }).requestId, error: `Unknown message type: ${(msg as { type: string }).type}` });
       } catch (e) {
         post({
           type: "mutation.error",
@@ -1166,7 +1165,7 @@ export function activate(context: vscode.ExtensionContext) {
         // Try to send cleanup message to webview before disposal
         try {
           panel.webview.postMessage({ type: 'webview.cleanup' });
-        } catch (e) {
+        } catch {
           // Webview already disposed, ignore
         }
 

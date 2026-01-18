@@ -4,7 +4,6 @@ import {
   BoardData,
   BoardColumn,
   BoardCard,
-  MinimalCard,
   EnrichedCard,
   FullCard,
   IssueStatus,
@@ -35,7 +34,7 @@ export class DaemonBeadsAdapter {
   // Column data cache for pagination optimization
   // WORKAROUND: bd CLI doesn't support --offset, so we cache large result sets
   // and slice them in memory to avoid repeatedly fetching the same data
-  private columnDataCache: Map<string, { data: any[]; timestamp: number }> = new Map();
+  private columnDataCache: Map<string, { data: unknown[]; timestamp: number }> = new Map();
   private readonly COLUMN_CACHE_TTL_MS = 30000; // 30 seconds
   private readonly COLUMN_CACHE_MAX_SIZE = 1000; // Max items to cache per column
 
@@ -252,7 +251,7 @@ export class DaemonBeadsAdapter {
    * @param args Command arguments to pass to bd (will be sanitized)
    * @param timeoutMs Timeout in milliseconds (default: 30000ms = 30s)
    */
-  private async execBd(args: string[], timeoutMs: number = 30000): Promise<any> {
+  private async execBd(args: string[], timeoutMs: number = 30000): Promise<unknown> {
     // Sanitize all arguments before passing to CLI
     const sanitizedArgs = args.map(arg => this.sanitizeCliArg(arg));
     return new Promise((resolve, reject) => {
@@ -341,7 +340,7 @@ export class DaemonBeadsAdapter {
               // Try parsing as JSON (for query commands like list/show)
               const result = JSON.parse(trimmed);
               resolve(result);
-            } catch (error) {
+            } catch {
               // Not JSON - likely a friendly message from mutation commands
               // This is fine, just return null to indicate success
               this.output.appendLine(`[DaemonBeadsAdapter] Non-JSON output: ${trimmed}`);
@@ -363,7 +362,7 @@ export class DaemonBeadsAdapter {
   public async ensureConnected(): Promise<void> {
     try {
       // Check daemon status using 'bd info --json'
-      const info = await this.execBd(['info', '--json']);
+      const info = await this.execBd(['info', '--json']) as { daemon_connected?: boolean; daemon_status?: string } | null;
 
       if (!info || !info.daemon_connected) {
         throw new Error('Beads daemon is not running. Please start the daemon with: bd daemons start');
@@ -478,9 +477,9 @@ export class DaemonBeadsAdapter {
 
       // Step 2: Get full details for all issues (includes dependents/relationships)
       // Batch the requests to avoid command-line length overflow on Windows (~8191 chars)
-      const issueIds = basicIssues.map((issue: any) => issue.id);
+      const issueIds = basicIssues.map((issue: unknown) => (issue as { id: string }).id);
       const BATCH_SIZE = 50; // Conservative batch size to stay well under CLI limits
-      const detailedIssues: any[] = [];
+      const detailedIssues: unknown[] = [];
 
       for (let i = 0; i < issueIds.length; i += BATCH_SIZE) {
         const batch = issueIds.slice(i, i + BATCH_SIZE);
@@ -569,28 +568,31 @@ export class DaemonBeadsAdapter {
       }
 
       // Map to EnrichedCard - includes labels, assignee for better card display
-      const enrichedCards: EnrichedCard[] = issues.map((issue: any) => ({
-        id: issue.id,
-        title: issue.title || '',
-        description: issue.description || '',
-        status: issue.status || 'open',
-        priority: typeof issue.priority === 'number' ? issue.priority : 2,
-        issue_type: issue.issue_type || 'task',
-        created_at: issue.created_at || new Date().toISOString(),
-        created_by: issue.created_by || 'unknown',
-        updated_at: issue.updated_at || issue.created_at || new Date().toISOString(),
-        closed_at: issue.closed_at || null,
-        close_reason: issue.close_reason || null,
-        dependency_count: issue.dependency_count || 0,
-        dependent_count: issue.dependent_count || 0,
-        assignee: issue.assignee || null,
-        estimated_minutes: issue.estimated_minutes || null,
-        labels: Array.isArray(issue.labels) ? issue.labels : [],
-        external_ref: issue.external_ref || null,
-        pinned: issue.pinned || false,
-        blocked_by_count: issue.blocked_by_count || 0,
-        is_ready: issue.status === 'open' && (issue.blocked_by_count || 0) === 0
-      }));
+      const enrichedCards: EnrichedCard[] = issues.map((issue: unknown) => {
+        const i = issue as Record<string, unknown>;
+        return {
+          id: i.id as string,
+          title: (i.title as string) || '',
+          description: (i.description as string) || '',
+          status: (i.status as IssueStatus) || 'open',
+          priority: typeof i.priority === 'number' ? i.priority : 2,
+          issue_type: (i.issue_type as string) || 'task',
+          created_at: (i.created_at as string) || new Date().toISOString(),
+          created_by: (i.created_by as string) || 'unknown',
+          updated_at: (i.updated_at as string) || (i.created_at as string) || new Date().toISOString(),
+          closed_at: (i.closed_at as string | null) || null,
+          close_reason: (i.close_reason as string | null) || null,
+          dependency_count: (i.dependency_count as number) || 0,
+          dependent_count: (i.dependent_count as number) || 0,
+          assignee: (i.assignee as string | null) || null,
+          estimated_minutes: (i.estimated_minutes as number | null) || null,
+          labels: Array.isArray(i.labels) ? i.labels as string[] : [],
+          external_ref: (i.external_ref as string | null) || null,
+          pinned: (i.pinned as boolean) || false,
+          blocked_by_count: (i.blocked_by_count as number) || 0,
+          is_ready: i.status === 'open' && ((i.blocked_by_count as number) || 0) === 0
+        };
+      });
 
       this.output.appendLine(`[DaemonBeadsAdapter] getBoardMinimal: Loaded ${enrichedCards.length} enriched cards`);
       return enrichedCards;
@@ -625,83 +627,86 @@ export class DaemonBeadsAdapter {
         throw new Error(`Issue not found: ${issueId}`);
       }
 
-      const issue = result[0];
+      const issue = result[0] as Record<string, unknown>;
 
       // Build dependency information
       const parent = this.extractParentDependency(issue);
       const children = this.extractChildrenDependencies(issue);
       const blocks = this.extractBlocksDependencies(issue);
-      const blocked_by = this.extractBlockedByDependencies(issue);
+      const blocked_by = this.extractBlockedByDependencies();
 
       // Map labels
       let labels: string[] = [];
       if (issue.labels && Array.isArray(issue.labels)) {
-        labels = issue.labels.map((l: any) => typeof l === 'string' ? l : l.label);
+        labels = issue.labels.map((l: unknown) => typeof l === 'string' ? l : (l as { label: string }).label);
       }
 
       // Map comments
       const comments: Comment[] = [];
       if (issue.comments && Array.isArray(issue.comments)) {
-        comments.push(...issue.comments.map((c: any) => ({
-          id: c.id,
-          issue_id: issueId,
-          author: c.author || 'unknown',
-          text: c.text || '',
-          created_at: c.created_at
-        })));
+        comments.push(...issue.comments.map((c: unknown) => {
+          const comment = c as Record<string, unknown>;
+          return {
+            id: typeof comment.id === 'string' ? parseInt(comment.id, 10) : (comment.id as number),
+            issue_id: issueId,
+            author: (comment.author as string) || 'unknown',
+            text: (comment.text as string) || '',
+            created_at: comment.created_at as string
+          };
+        }));
       }
 
       const fullCard: FullCard = {
         // MinimalCard fields
-        id: issue.id,
-        title: issue.title || '',
-        description: issue.description || '',
-        status: issue.status || 'open',
+        id: issue.id as string,
+        title: (issue.title as string) || '',
+        description: (issue.description as string) || '',
+        status: (issue.status as string) || 'open',
         priority: typeof issue.priority === 'number' ? issue.priority : 2,
-        issue_type: issue.issue_type || 'task',
-        created_at: issue.created_at || new Date().toISOString(),
-        created_by: issue.created_by || 'unknown',
-        updated_at: issue.updated_at || issue.created_at || new Date().toISOString(),
-        closed_at: issue.closed_at || null,
-        close_reason: issue.close_reason || null,
-        dependency_count: issue.dependency_count || 0,
-        dependent_count: issue.dependent_count || 0,
+        issue_type: (issue.issue_type as string) || 'task',
+        created_at: (issue.created_at as string) || new Date().toISOString(),
+        created_by: (issue.created_by as string) || 'unknown',
+        updated_at: (issue.updated_at as string) || (issue.created_at as string) || new Date().toISOString(),
+        closed_at: (issue.closed_at as string | null) || null,
+        close_reason: (issue.close_reason as string | null) || null,
+        dependency_count: (issue.dependency_count as number) || 0,
+        dependent_count: (issue.dependent_count as number) || 0,
 
         // EnrichedCard fields
-        assignee: issue.assignee || null,
-        estimated_minutes: issue.estimated_minutes || null,
+        assignee: (issue.assignee as string | null) || null,
+        estimated_minutes: (issue.estimated_minutes as number | null) || null,
         labels,
-        external_ref: issue.external_ref || null,
+        external_ref: (issue.external_ref as string | null) || null,
         pinned: issue.pinned === 1 || issue.pinned === true,
         blocked_by_count: blocked_by.length,
 
         // FullCard fields
-        acceptance_criteria: issue.acceptance_criteria || '',
-        design: issue.design || '',
-        notes: issue.notes || '',
-        due_at: issue.due_at || null,
-        defer_until: issue.defer_until || null,
+        acceptance_criteria: (issue.acceptance_criteria as string) || '',
+        design: (issue.design as string) || '',
+        notes: (issue.notes as string) || '',
+        due_at: (issue.due_at as string | null) || null,
+        defer_until: (issue.defer_until as string | null) || null,
         is_ready: issue.status === 'open' && blocked_by.length === 0,
         is_template: issue.is_template === 1 || issue.is_template === true,
         ephemeral: issue.ephemeral === 1 || issue.ephemeral === true,
 
         // Event/Agent metadata
-        event_kind: issue.event_kind || null,
-        actor: issue.actor || null,
-        target: issue.target || null,
-        payload: issue.payload || null,
-        sender: issue.sender || null,
-        mol_type: issue.mol_type || null,
-        role_type: issue.role_type || null,
-        rig: issue.rig || null,
-        agent_state: issue.agent_state || null,
-        last_activity: issue.last_activity || null,
-        hook_bead: issue.hook_bead || null,
-        role_bead: issue.role_bead || null,
-        await_type: issue.await_type || null,
-        await_id: issue.await_id || null,
-        timeout_ns: issue.timeout_ns || null,
-        waiters: issue.waiters || null,
+        event_kind: (issue.event_kind as string | null) || null,
+        actor: (issue.actor as string | null) || null,
+        target: (issue.target as string | null) || null,
+        payload: (issue.payload as string | null) || null,
+        sender: (issue.sender as string | null) || null,
+        mol_type: (issue.mol_type as string | null) || null,
+        role_type: (issue.role_type as string | null) || null,
+        rig: (issue.rig as string | null) || null,
+        agent_state: (issue.agent_state as string | null) || null,
+        last_activity: (issue.last_activity as string | null) || null,
+        hook_bead: (issue.hook_bead as string | null) || null,
+        role_bead: (issue.role_bead as string | null) || null,
+        await_type: (issue.await_type as string | null) || null,
+        await_id: (issue.await_id as string | null) || null,
+        timeout_ns: (issue.timeout_ns as number | null) || null,
+        waiters: (issue.waiters as string | null) || null,
 
         // Relationships
         parent,
@@ -721,21 +726,22 @@ export class DaemonBeadsAdapter {
   /**
    * Extract parent dependency from issue data
    */
-  private extractParentDependency(issue: any): DependencyInfo | undefined {
+  private extractParentDependency(issue: Record<string, unknown>): DependencyInfo | undefined {
     if (!issue.dependents || !Array.isArray(issue.dependents)) {
       return undefined;
     }
 
     // Find parent-child dependency where this issue is the child
-    for (const dep of issue.dependents) {
+    for (const d of issue.dependents) {
+      const dep = d as Record<string, unknown>;
       if (dep.dependency_type === 'parent-child' && dep.id !== issue.id) {
         return {
-          id: dep.id,
-          title: dep.title,
-          created_at: dep.created_at,
-          created_by: dep.created_by || 'unknown',
-          metadata: dep.metadata,
-          thread_id: dep.thread_id
+          id: dep.id as string,
+          title: dep.title as string,
+          created_at: dep.created_at as string,
+          created_by: (dep.created_by as string) || 'unknown',
+          metadata: dep.metadata as string | undefined,
+          thread_id: dep.thread_id as string | undefined
         };
       }
     }
@@ -746,22 +752,23 @@ export class DaemonBeadsAdapter {
   /**
    * Extract children dependencies from issue data
    */
-  private extractChildrenDependencies(issue: any): DependencyInfo[] {
+  private extractChildrenDependencies(issue: Record<string, unknown>): DependencyInfo[] {
     const children: DependencyInfo[] = [];
 
     if (!issue.dependents || !Array.isArray(issue.dependents)) {
       return children;
     }
 
-    for (const dep of issue.dependents) {
+    for (const d of issue.dependents) {
+      const dep = d as Record<string, unknown>;
       if (dep.dependency_type === 'parent-child' && dep.id !== issue.id) {
         children.push({
-          id: dep.id,
-          title: dep.title,
-          created_at: dep.created_at,
-          created_by: dep.created_by || 'unknown',
-          metadata: dep.metadata,
-          thread_id: dep.thread_id
+          id: dep.id as string,
+          title: dep.title as string,
+          created_at: dep.created_at as string,
+          created_by: (dep.created_by as string) || 'unknown',
+          metadata: dep.metadata as string | undefined,
+          thread_id: dep.thread_id as string | undefined
         });
       }
     }
@@ -772,22 +779,23 @@ export class DaemonBeadsAdapter {
   /**
    * Extract blocks dependencies from issue data
    */
-  private extractBlocksDependencies(issue: any): DependencyInfo[] {
+  private extractBlocksDependencies(issue: Record<string, unknown>): DependencyInfo[] {
     const blocks: DependencyInfo[] = [];
 
     if (!issue.dependents || !Array.isArray(issue.dependents)) {
       return blocks;
     }
 
-    for (const dep of issue.dependents) {
+    for (const d of issue.dependents) {
+      const dep = d as Record<string, unknown>;
       if (dep.dependency_type === 'blocks' && dep.id !== issue.id) {
         blocks.push({
-          id: dep.id,
-          title: dep.title,
-          created_at: dep.created_at,
-          created_by: dep.created_by || 'unknown',
-          metadata: dep.metadata,
-          thread_id: dep.thread_id
+          id: dep.id as string,
+          title: dep.title as string,
+          created_at: dep.created_at as string,
+          created_by: (dep.created_by as string) || 'unknown',
+          metadata: dep.metadata as string | undefined,
+          thread_id: dep.thread_id as string | undefined
         });
       }
     }
@@ -798,7 +806,7 @@ export class DaemonBeadsAdapter {
   /**
    * Extract blocked_by dependencies from issue data
    */
-  private extractBlockedByDependencies(issue: any): DependencyInfo[] {
+  private extractBlockedByDependencies(): DependencyInfo[] {
     // Note: bd show returns "dependents" which are issues that depend on THIS issue
     // To get blocked_by, we need to look at dependencies where this issue is blocked
     // This information might not be in the response, so we return empty for now
@@ -836,17 +844,20 @@ export class DaemonBeadsAdapter {
         return [];
       }
 
-      const issue = result[0];
+      const issue = result[0] as Record<string, unknown>;
 
       // Extract and map comments
       if (issue.comments && Array.isArray(issue.comments)) {
-        return issue.comments.map((c: any) => ({
-          id: c.id,
-          issue_id: issueId,
-          author: c.author || 'unknown',
-          text: c.text || '',
-          created_at: c.created_at
-        }));
+        return issue.comments.map((c: unknown) => {
+          const comment = c as Record<string, unknown>;
+          return {
+            id: typeof comment.id === 'string' ? parseInt(comment.id, 10) : (comment.id as number),
+            issue_id: issueId,
+            author: (comment.author as string) || 'unknown',
+            text: (comment.text as string) || '',
+            created_at: comment.created_at as string
+          };
+        });
       }
 
       return [];
@@ -864,7 +875,8 @@ export class DaemonBeadsAdapter {
     try {
       this.trackInteraction();
       // Use bd stats --json for instant counts (no issue loading required)
-      const stats = await this.execBd(['stats', '--json']);
+      const statsResult = await this.execBd(['stats', '--json']);
+      const stats = statsResult as { summary?: { ready_issues?: number; in_progress_issues?: number; blocked_issues?: number; closed_issues?: number; open_issues?: number } } | null;
 
       if (!stats || !stats.summary) {
         this.output.appendLine('[DaemonBeadsAdapter] bd stats returned invalid data, falling back to list queries');
@@ -904,7 +916,7 @@ export class DaemonBeadsAdapter {
    */
   private async getColumnCountFallback(column: string): Promise<number> {
     try {
-      let result: any;
+      let result: unknown;
 
       switch (column) {
         case 'ready':
@@ -979,40 +991,45 @@ export class DaemonBeadsAdapter {
 
       this.output.appendLine(`[DaemonBeadsAdapter] Cache miss for ${column}, fetching ${fetchLimit} items (offset=${offset}, limit=${limit})`);
 
-      let basicIssues: any[];
+      let basicIssues: unknown[];
 
       switch (column) {
-        case 'ready':
+        case 'ready': {
           // Use bd ready - it returns issues with no blockers
           // WORKAROUND: bd ready doesn't support --offset, so we fetch a large chunk and cache it
           // This eliminates the O(N) performance issue for subsequent page requests
           const readyResult = await this.execBd(['ready', '--json', '--limit', String(fetchLimit)]);
           basicIssues = Array.isArray(readyResult) ? readyResult : [];
           break;
+        }
 
-        case 'in_progress':
+        case 'in_progress': {
           // Use bd list with status filter
           const inProgressResult = await this.execBd(['list', '--status=in_progress', '--json', '--limit', String(fetchLimit)]);
           basicIssues = Array.isArray(inProgressResult) ? inProgressResult : [];
           break;
+        }
 
-        case 'blocked':
+        case 'blocked': {
           // Use bd list --status=blocked for efficient pagination
           const blockedResult = await this.execBd(['list', '--status=blocked', '--json', '--limit', String(fetchLimit)]);
           basicIssues = Array.isArray(blockedResult) ? blockedResult : [];
           break;
+        }
 
-        case 'closed':
+        case 'closed': {
           // Use bd list with status filter (supports --limit)
           const closedResult = await this.execBd(['list', '--status=closed', '--json', '--limit', String(fetchLimit)]);
           basicIssues = Array.isArray(closedResult) ? closedResult : [];
           break;
+        }
 
-        case 'open':
+        case 'open': {
           // Use bd list with status filter (supports --limit)
           const openResult = await this.execBd(['list', '--status=open', '--json', '--limit', String(fetchLimit)]);
           basicIssues = Array.isArray(openResult) ? openResult : [];
           break;
+        }
 
         default:
           throw new Error(`Unknown column: ${column}`);
@@ -1043,11 +1060,11 @@ export class DaemonBeadsAdapter {
    * Helper method to enrich basic issue data with full details.
    * Used by getColumnData to fetch complete issue information.
    */
-  private async enrichColumnIssues(basicIssues: any[]): Promise<BoardCard[]> {
+  private async enrichColumnIssues(basicIssues: unknown[]): Promise<BoardCard[]> {
     // Step 2: Get full details for all issues using bd show (in batches)
-    const issueIds = basicIssues.map((issue: any) => issue.id);
+    const issueIds = basicIssues.map((issue: unknown) => (issue as { id: string }).id);
     const BATCH_SIZE = 50;
-    const detailedIssues: any[] = [];
+    const detailedIssues: unknown[] = [];
 
     for (let i = 0; i < issueIds.length; i += BATCH_SIZE) {
       const batch = issueIds.slice(i, i + BATCH_SIZE);
@@ -1154,7 +1171,7 @@ export class DaemonBeadsAdapter {
                         card.title.toLowerCase().includes(searchLower) ||
                         card.id.toLowerCase().includes(searchLower) ||
                         (card.description && card.description.toLowerCase().includes(searchLower));
-                    if (!matchesSearch) return false;
+                    if (!matchesSearch) {return false;}
                 }
 
                 // Priority filter
@@ -1170,32 +1187,32 @@ export class DaemonBeadsAdapter {
                 // Status filter
                 if (filters.status) {
                     if (filters.status === 'not_closed') {
-                        if (card.status === 'closed') return false;
+                        if (card.status === 'closed') {return false;}
                     } else if (filters.status === 'active') {
-                        if (card.status !== 'in_progress' && card.status !== 'open') return false;
+                        if (card.status !== 'in_progress' && card.status !== 'open') {return false;}
                     } else if (filters.status === 'blocked') {
-                        if (card.status !== 'blocked') return false;
+                        if (card.status !== 'blocked') {return false;}
                     } else if (filters.status !== 'all') {
-                        if (card.status !== filters.status) return false;
+                        if (card.status !== filters.status) {return false;}
                     }
                 }
 
                 // Assignee filter
                 if (filters.assignee) {
                     if (filters.assignee === 'unassigned') {
-                        if (card.assignee) return false;
+                        if (card.assignee) {return false;}
                     } else {
-                        if (card.assignee !== filters.assignee) return false;
+                        if (card.assignee !== filters.assignee) {return false;}
                     }
                 }
 
                 // Labels filter (must have ALL specified labels)
                 if (filters.labels && filters.labels.length > 0) {
-                    if (!card.labels || card.labels.length === 0) return false;
+                    if (!card.labels || card.labels.length === 0) {return false;}
                     const hasAllLabels = filters.labels.every(label => 
                         card.labels.includes(label)
                     );
-                    if (!hasAllLabels) return false;
+                    if (!hasAllLabels) {return false;}
                 }
 
                 return true;
@@ -1226,31 +1243,36 @@ export class DaemonBeadsAdapter {
                         case 'type':
                             cmp = a.issue_type.localeCompare(b.issue_type);
                             break;
-                        case 'assignee':
+                        case 'assignee': {
                             const aAssignee = a.assignee || '';
                             const bAssignee = b.assignee || '';
                             cmp = aAssignee.localeCompare(bAssignee);
                             break;
-                        case 'created':
+                        }
+                        case 'created': {
                             const aCreated = new Date(a.created_at).getTime();
                             const bCreated = new Date(b.created_at).getTime();
                             cmp = aCreated - bCreated;
                             break;
-                        case 'updated':
+                        }
+                        case 'updated': {
                             const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                             const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
                             cmp = aUpdated - bUpdated;
                             break;
-                        case 'closed':
+                        }
+                        case 'closed': {
                             const aClosed = a.closed_at ? new Date(a.closed_at).getTime() : 0;
                             const bClosed = b.closed_at ? new Date(b.closed_at).getTime() : 0;
                             cmp = aClosed - bClosed;
                             break;
-                        default:
+                        }
+                        default: {
                             // Fallback to updated_at
                             const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                             const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
                             cmp = aTime - bTime;
+                        }
                     }
 
                     if (cmp !== 0) {
@@ -1286,7 +1308,7 @@ export class DaemonBeadsAdapter {
    * Map daemon issue data to BoardData format
    * This implements the data mapping task (beads-nm3)
    */
-  private mapIssuesToBoardData(issues: any[]): BoardData {
+  private mapIssuesToBoardData(issues: unknown[]): BoardData {
     const cards: BoardCard[] = [];
     
     // Build dependency maps from dependents structure
@@ -1297,67 +1319,70 @@ export class DaemonBeadsAdapter {
     const blocksMap = new Map<string, DependencyInfo[]>(); // Maps blocker_id -> blocked_info[]
 
     // First pass: build dependency maps
-    for (const issue of issues) {
+    for (const i of issues) {
+      const issue = i as Record<string, unknown>;
       if (issue.dependents && Array.isArray(issue.dependents)) {
-        for (const dependent of issue.dependents) {
+        for (const d of issue.dependents) {
+          const dependent = d as Record<string, unknown>;
           const dependentInfo: DependencyInfo = {
-            id: dependent.id,
-            title: dependent.title,
-            created_at: dependent.created_at,
-            created_by: dependent.created_by || 'unknown',
-            metadata: dependent.metadata,
-            thread_id: dependent.thread_id
+            id: dependent.id as string,
+            title: dependent.title as string,
+            created_at: dependent.created_at as string,
+            created_by: (dependent.created_by as string) || 'unknown',
+            metadata: dependent.metadata as string | undefined,
+            thread_id: dependent.thread_id as string | undefined
           };
 
           if (dependent.dependency_type === 'parent-child') {
             // This issue (issue) is the PARENT
             // The dependent is the CHILD
             // So: child.parent = this issue, and this issue.children includes child
-            
-            parentMap.set(dependent.id, {
-              id: issue.id,
-              title: issue.title,
-              created_at: issue.created_at,
-              created_by: issue.created_by || 'unknown',
-              metadata: issue.metadata,
-              thread_id: issue.thread_id
+
+            parentMap.set(dependent.id as string, {
+              id: issue.id as string,
+              title: issue.title as string,
+              created_at: issue.created_at as string,
+              created_by: (issue.created_by as string) || 'unknown',
+              metadata: issue.metadata as string | undefined,
+              thread_id: issue.thread_id as string | undefined
             });
-            
-            const siblings = childrenMap.get(issue.id) || [];
+
+            const siblings = childrenMap.get(issue.id as string) || [];
             siblings.push(dependentInfo);
-            childrenMap.set(issue.id, siblings);
+            childrenMap.set(issue.id as string, siblings);
           } else if (dependent.dependency_type === 'blocks') {
             // This issue (issue) BLOCKS the dependent
             // So: dependent.blocked_by includes this issue, and this issue.blocks includes dependent
-            
-            const blockers = blockedByMap.get(dependent.id) || [];
+
+            const blockers = blockedByMap.get(dependent.id as string) || [];
             blockers.push({
-              id: issue.id,
-              title: issue.title,
-              created_at: issue.created_at,
-              created_by: issue.created_by || 'unknown',
-              metadata: issue.metadata,
-              thread_id: issue.thread_id
+              id: issue.id as string,
+              title: issue.title as string,
+              created_at: issue.created_at as string,
+              created_by: (issue.created_by as string) || 'unknown',
+              metadata: issue.metadata as string | undefined,
+              thread_id: issue.thread_id as string | undefined
             });
-            blockedByMap.set(dependent.id, blockers);
-            
-            const blocked = blocksMap.get(issue.id) || [];
+            blockedByMap.set(dependent.id as string, blockers);
+
+            const blocked = blocksMap.get(issue.id as string) || [];
             blocked.push(dependentInfo);
-            blocksMap.set(issue.id, blocked);
+            blocksMap.set(issue.id as string, blocked);
           }
         }
       }
     }
 
     // Second pass: create cards with relationships
-    for (const issue of issues) {
-      const blockedBy = blockedByMap.get(issue.id) || [];
+    for (const i of issues) {
+      const issue = i as Record<string, unknown>;
+      const blockedBy = blockedByMap.get(issue.id as string) || [];
       const isReady = issue.status === 'open' && blockedBy.length === 0;
-      
+
       // Map labels
       let labels: string[] = [];
       if (issue.labels && Array.isArray(issue.labels)) {
-        labels = issue.labels.map((l: any) => typeof l === 'string' ? l : l.label);
+        labels = issue.labels.map((l: unknown) => typeof l === 'string' ? l : (l as { label: string }).label);
       }
 
       // Comments are lazy-loaded on demand (see getIssueComments method)
@@ -1365,49 +1390,49 @@ export class DaemonBeadsAdapter {
       const comments: Comment[] = [];
 
       const card: BoardCard = {
-        id: issue.id,
-        title: issue.title,
-        description: issue.description || '',
+        id: issue.id as string,
+        title: issue.title as string,
+        description: (issue.description as string) || '',
         status: issue.status as IssueStatus,
-        priority: issue.priority ?? 2,
-        issue_type: issue.issue_type || 'task',
-        assignee: issue.assignee || null,
-        estimated_minutes: issue.estimated_minutes || null,
-        created_at: issue.created_at,
-        updated_at: issue.updated_at,
-        closed_at: issue.closed_at || null,
-        external_ref: issue.external_ref || null,
+        priority: (issue.priority as number) ?? 2,
+        issue_type: (issue.issue_type as string) || 'task',
+        assignee: (issue.assignee as string | null) || null,
+        estimated_minutes: (issue.estimated_minutes as number | null) || null,
+        created_at: issue.created_at as string,
+        updated_at: issue.updated_at as string,
+        closed_at: (issue.closed_at as string | null) || null,
+        external_ref: (issue.external_ref as string | null) || null,
         is_ready: isReady,
         blocked_by_count: blockedBy.length,
-        acceptance_criteria: issue.acceptance_criteria || '',
-        design: issue.design || '',
-        notes: issue.notes || '',
-        due_at: issue.due_at || null,
-        defer_until: issue.defer_until || null,
+        acceptance_criteria: (issue.acceptance_criteria as string) || '',
+        design: (issue.design as string) || '',
+        notes: (issue.notes as string) || '',
+        due_at: (issue.due_at as string | null) || null,
+        defer_until: (issue.defer_until as string | null) || null,
         labels,
         pinned: issue.pinned === true || issue.pinned === 1,
         is_template: issue.is_template === true || issue.is_template === 1,
         ephemeral: issue.ephemeral === true || issue.ephemeral === 1,
-        event_kind: issue.event_kind || null,
-        actor: issue.actor || null,
-        target: issue.target || null,
-        payload: issue.payload || null,
-        sender: issue.sender || null,
-        mol_type: issue.mol_type || null,
-        role_type: issue.role_type || null,
-        rig: issue.rig || null,
-        agent_state: issue.agent_state || null,
-        last_activity: issue.last_activity || null,
-        hook_bead: issue.hook_bead || null,
-        role_bead: issue.role_bead || null,
-        await_type: issue.await_type || null,
-        await_id: issue.await_id || null,
-        timeout_ns: issue.timeout_ns || null,
-        waiters: issue.waiters || null,
-        parent: parentMap.get(issue.id),
-        children: childrenMap.get(issue.id),
+        event_kind: (issue.event_kind as string | null) || null,
+        actor: (issue.actor as string | null) || null,
+        target: (issue.target as string | null) || null,
+        payload: (issue.payload as string | null) || null,
+        sender: (issue.sender as string | null) || null,
+        mol_type: (issue.mol_type as string | null) || null,
+        role_type: (issue.role_type as string | null) || null,
+        rig: (issue.rig as string | null) || null,
+        agent_state: (issue.agent_state as string | null) || null,
+        last_activity: (issue.last_activity as string | null) || null,
+        hook_bead: (issue.hook_bead as string | null) || null,
+        role_bead: (issue.role_bead as string | null) || null,
+        await_type: (issue.await_type as string | null) || null,
+        await_id: (issue.await_id as string | null) || null,
+        timeout_ns: (issue.timeout_ns as number | null) || null,
+        waiters: (issue.waiters as string | null) || null,
+        parent: parentMap.get(issue.id as string),
+        children: childrenMap.get(issue.id as string),
         blocked_by: blockedBy.length > 0 ? blockedBy : undefined,
-        blocks: blocksMap.get(issue.id),
+        blocks: blocksMap.get(issue.id as string),
         comments
       };
 
@@ -1468,7 +1493,7 @@ export class DaemonBeadsAdapter {
     this.validateFlagValue(input.status, 'status');
 
     // Validate parent and dependency IDs
-    if (input.parent_id) this.validateIssueId(input.parent_id);
+    if (input.parent_id) {this.validateIssueId(input.parent_id);}
     if (input.blocked_by_ids) {
       input.blocked_by_ids.forEach(id => this.validateIssueId(id));
     }
@@ -1484,23 +1509,23 @@ export class DaemonBeadsAdapter {
     // Build bd create command args
     const args = ['create', '--title', title];
 
-    if (input.description) args.push('--description', input.description);
+    if (input.description) {args.push('--description', input.description);}
     // NOTE: bd create doesn't support --status, issues are always created as "open"
     // If a different status is needed, it must be updated after creation
-    if (input.priority !== undefined) args.push('--priority', String(input.priority));
-    if (input.issue_type) args.push('--type', input.issue_type);
-    if (input.assignee) args.push('--assignee', input.assignee);
+    if (input.priority !== undefined) {args.push('--priority', String(input.priority));}
+    if (input.issue_type) {args.push('--type', input.issue_type);}
+    if (input.assignee) {args.push('--assignee', input.assignee);}
     if (input.estimated_minutes !== null && input.estimated_minutes !== undefined) {
       args.push('--estimate', String(input.estimated_minutes));
     }
-    if (input.acceptance_criteria) args.push('--acceptance', input.acceptance_criteria);
-    if (input.design) args.push('--design', input.design);
-    if (input.notes) args.push('--notes', input.notes);
-    if (input.external_ref) args.push('--external-ref', input.external_ref);
-    if (input.due_at) args.push('--due', input.due_at);
-    if (input.defer_until) args.push('--defer', input.defer_until);
-    if (input.labels && input.labels.length > 0) args.push('--labels', input.labels.join(','));
-    if (input.ephemeral) args.push('--ephemeral');
+    if (input.acceptance_criteria) {args.push('--acceptance', input.acceptance_criteria);}
+    if (input.design) {args.push('--design', input.design);}
+    if (input.notes) {args.push('--notes', input.notes);}
+    if (input.external_ref) {args.push('--external-ref', input.external_ref);}
+    if (input.due_at) {args.push('--due', input.due_at);}
+    if (input.defer_until) {args.push('--defer', input.defer_until);}
+    if (input.labels && input.labels.length > 0) {args.push('--labels', input.labels.join(','));}
+    if (input.ephemeral) {args.push('--ephemeral');}
     // Note: bd create doesn't support --pinned or --template flags yet
     // These would need to be set after creation if needed
     
@@ -1528,10 +1553,11 @@ export class DaemonBeadsAdapter {
 
       // bd create returns the created issue with id
       let issueId: string;
-      if (result && result.id) {
-        issueId = result.id;
-      } else if (result && Array.isArray(result) && result[0]?.id) {
-        issueId = result[0].id;
+      const resultObj = result as { id?: string } | { id?: string }[] | null;
+      if (resultObj && !Array.isArray(resultObj) && resultObj.id) {
+        issueId = resultObj.id;
+      } else if (resultObj && Array.isArray(resultObj) && resultObj[0]?.id) {
+        issueId = resultObj[0].id;
       } else {
         throw new Error('bd create did not return issue id');
       }
@@ -1543,8 +1569,8 @@ export class DaemonBeadsAdapter {
       
       // Set pinned and is_template flags if needed (bd create doesn't support these)
       const updateArgs = [];
-      if (input.pinned) updateArgs.push('--pinned', 'true');
-      if (input.is_template) updateArgs.push('--template', 'true');
+      if (input.pinned) {updateArgs.push('--pinned', 'true');}
+      if (input.is_template) {updateArgs.push('--template', 'true');}
       
       if (updateArgs.length > 0) {
         await this.execBd(['update', issueId, ...updateArgs]);
@@ -1626,10 +1652,10 @@ export class DaemonBeadsAdapter {
     // TODO: Test if this is still needed with bd 0.47.1+ and remove if fixed
     const args = ['update', id, '--no-daemon'];
 
-    if (updates.title !== undefined) args.push('--title', updates.title);
-    if (updates.description !== undefined) args.push('--description', updates.description);
-    if (updates.priority !== undefined) args.push('--priority', String(updates.priority));
-    if (updates.issue_type !== undefined) args.push('--type', updates.issue_type);
+    if (updates.title !== undefined) {args.push('--title', updates.title);}
+    if (updates.description !== undefined) {args.push('--description', updates.description);}
+    if (updates.priority !== undefined) {args.push('--priority', String(updates.priority));}
+    if (updates.issue_type !== undefined) {args.push('--type', updates.issue_type);}
     if (updates.assignee !== undefined) {
       if (updates.assignee) {
         args.push('--assignee', updates.assignee);
@@ -1640,14 +1666,14 @@ export class DaemonBeadsAdapter {
     if (updates.estimated_minutes !== undefined) {
       args.push('--estimate', String(updates.estimated_minutes || 0));
     }
-    if (updates.acceptance_criteria !== undefined) args.push('--acceptance', updates.acceptance_criteria);
-    if (updates.design !== undefined) args.push('--design', updates.design);
+    if (updates.acceptance_criteria !== undefined) {args.push('--acceptance', updates.acceptance_criteria);}
+    if (updates.design !== undefined) {args.push('--design', updates.design);}
     if (updates.external_ref !== undefined) {
       if (updates.external_ref) {
         args.push('--external-ref', updates.external_ref);
       }
     }
-    if (updates.notes !== undefined) args.push('--notes', updates.notes);
+    if (updates.notes !== undefined) {args.push('--notes', updates.notes);}
     if (updates.due_at !== undefined) {
       if (updates.due_at) {
         args.push('--due', updates.due_at);
@@ -1658,7 +1684,7 @@ export class DaemonBeadsAdapter {
         args.push('--defer', updates.defer_until);
       }
     }
-    if (updates.status !== undefined) args.push('--status', updates.status);
+    if (updates.status !== undefined) {args.push('--status', updates.status);}
 
     try {
       await this.execBd(args);
