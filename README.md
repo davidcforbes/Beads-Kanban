@@ -2,8 +2,9 @@
 
 A visual Kanban board VS Code extension for managing [Beads](https://github.com/steveyegge/beads) issues directly in your editor. View, create, edit, and organize your `.beads` issues with an intuitive drag-and-drop interface.
 
-![Version](https://img.shields.io/badge/version-1.0.5-blue)
+![Version](https://img.shields.io/badge/version-2.0.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![VS Code](https://img.shields.io/badge/VS%20Code-1.90+-blue)
 
 ## Screenshots
 
@@ -62,9 +63,11 @@ Comprehensive issue editing with all metadata fields, dependencies, and comments
 3. Select the downloaded file
 4. Reload VS Code
 
-### From Marketplace (Coming Soon)
+### From VS Code Marketplace
 
-Search for "Beads Kanban" in the VS Code Extensions marketplace.
+1. Open VS Code Extensions view (`Ctrl+Shift+X`)
+2. Search for "Beads Kanban"
+3. Click Install
 
 ## Prerequisites
 

@@ -44,6 +44,66 @@ The project uses ESLint with strict TypeScript rules:
 - All source code must pass `npm run lint` with no errors
 - Use `unknown` type instead of `any` in production code, with proper type assertions
 
+**Type Safety Patterns:**
+
+When replacing `any` types with `unknown` for ESLint compliance:
+
+1. **CLI Result Handling**: Cast results from `execBd()` to expected types:
+   ```typescript
+   const result = await this.execBd(['info', '--json']);
+   const info = result as { daemon_connected?: boolean } | null;
+   ```
+
+2. **Object Mapping**: Use type assertions when mapping unknown objects:
+   ```typescript
+   const issue = rawIssue as Record<string, unknown>;
+   const fullCard: FullCard = {
+     id: issue.id as string,
+     title: (issue.title as string) || '',
+     priority: typeof issue.priority === 'number' ? issue.priority : 2,
+     // ... other fields
+   };
+   ```
+
+3. **Array Operations**: Cast arrays before mapping:
+   ```typescript
+   private async execBd(args: string[]): Promise<unknown> {
+     // ... implementation returns unknown
+   }
+
+   const issues = (await this.execBd(['list', '--json'])) as Array<Record<string, unknown>>;
+   return issues.map(issue => this.mapToFullCard(issue));
+   ```
+
+4. **Dependency Extraction**: Type guard patterns for nested structures:
+   ```typescript
+   private extractParentDependency(issue: Record<string, unknown>): DependencyInfo | undefined {
+     if (!issue.dependents || !Array.isArray(issue.dependents)) {
+       return undefined;
+     }
+     for (const d of issue.dependents) {
+       const dep = d as Record<string, unknown>;
+       if (dep.dependency_type === 'parent-child') {
+         return {
+           id: dep.id as string,
+           title: dep.title as string,
+           // ... other fields
+         };
+       }
+     }
+     return undefined;
+   }
+   ```
+
+**Common ESLint Fixes:**
+
+- `no-explicit-any`: Replace `any` with `unknown` + type assertions
+- `no-unused-vars`: Remove unused imports, or prefix with `_` if intentionally unused
+- `no-case-declarations`: Wrap switch case blocks with braces when declaring variables
+- `curly`: Add braces to all control statements (auto-fixable with `eslint --fix`)
+- `semi`: Add semicolons (auto-fixable with `eslint --fix`)
+- `no-control-regex`: Add `// eslint-disable-next-line no-control-regex` for intentional control character patterns
+
 ### Testing
 
 - `npm test` - Run all tests (requires compile first via pretest)
@@ -225,6 +285,144 @@ Example: If you had `maxIssues: 500`, use:
 
 The Create New Issue and Edit Issue forms will be consolidated into a single shared form unit to ensure identical fields, validation, and features across both workflows.
 
+## Common Bug Patterns
+
+### Dialog Visibility Issues
+
+**Problem**: HTML `<dialog>` element visible when it shouldn't be, even though JavaScript shows `dialog.open === false`.
+
+**Root Cause**: CSS with `display: flex` (or other display values) applied unconditionally overrides the native `<dialog>` hidden behavior.
+
+**Fix**: Use attribute selector to only apply display styles when dialog is actually open:
+
+```css
+/* WRONG - always visible */
+#detailDialog {
+  display: flex;
+}
+
+/* CORRECT - only visible when open */
+#detailDialog[open] {
+  display: flex;
+}
+```
+
+**Why it happens**: The native `<dialog>` element uses the `[open]` attribute to control visibility. CSS rules that set `display` without checking for `[open]` will override this behavior.
+
+### TypeScript vs ESLint Type Conflicts
+
+**Problem**: Code satisfies ESLint but fails TypeScript compilation after changing `any` to `unknown`.
+
+**Root Cause**: `unknown` requires explicit type assertions before property access, while `any` allows implicit access.
+
+**Solution**: Use type assertions at usage points:
+
+```typescript
+// Before (works but fails ESLint)
+const result: any = await execBd(['show', id]);
+return result.id;
+
+// After (satisfies both ESLint and TypeScript)
+const result = await execBd(['show', id]);
+const issue = result as { id?: string } | null;
+return issue?.id;
+```
+
+## Publishing to VS Code Marketplace
+
+### Prerequisites
+
+1. **Azure DevOps Account**: Create at https://dev.azure.com
+2. **Personal Access Token (PAT)**: Create in Azure DevOps with:
+   - Organization: All accessible organizations
+   - Scopes: Marketplace (Manage)
+   - Expiration: Set appropriate expiry date
+3. **Publisher Account**: Create with `vsce create-publisher <publisher-name>`
+
+### Publishing Workflow
+
+**First-time setup:**
+
+```bash
+# Install vsce globally (or use npx)
+npm install -g @vscode/vsce
+
+# Create publisher account (if not done)
+vsce create-publisher davidcforbes
+
+# Login with your PAT
+vsce login davidcforbes
+```
+
+**Publishing updates:**
+
+```bash
+# 1. Update version in package.json (semantic versioning)
+npm version patch  # or minor, major
+
+# 2. Update version in src/webview.ts to match (for cache-busting)
+
+# 3. Ensure all tests pass
+npm test
+
+# 4. Ensure ESLint passes
+npm run lint
+
+# 5. Package the extension (use PowerShell on Windows)
+vsce package
+
+# 6. Publish to marketplace
+vsce publish
+
+# 7. Commit version bump and push
+git add package.json src/webview.ts
+git commit -m "Bump version to $(node -p "require('./package.json').version")"
+git push
+git push --tags
+```
+
+**Package.json Requirements:**
+
+- `version`: Semantic versioning (X.Y.Z)
+- `publisher`: Must match your publisher account
+- `displayName`: User-friendly name
+- `description`: Clear description (< 200 chars recommended)
+- `icon`: Path to 128x128 PNG icon
+- `repository`: GitHub repo URL
+- `license`: License type (MIT, Apache, etc.)
+- `engines.vscode`: Minimum VS Code version
+- `categories`: Marketplace categories
+- `keywords`: Search keywords
+
+**README.md Requirements:**
+
+- Clear description of what the extension does
+- Screenshots or GIFs showing functionality
+- Installation instructions
+- Usage guide
+- Configuration options
+- Requirements/prerequisites
+- License information
+
+### Marketplace Guidelines
+
+- Extension must provide value and work as described
+- No executable code in README (security requirement)
+- Icon must be clear and recognizable at small sizes
+- Screenshots should be high-quality and relevant
+- Description should be clear and concise
+- All links in README should work
+- License must be specified
+
+### Version Management
+
+**CRITICAL**: When bumping version, update in TWO places:
+
+1. `package.json` - Extension version
+2. `src/webview.ts` - Cache-busting version string
+
+These must match for proper webview cache invalidation.
+
 ## Important Notes
 
 - The extension requires `bd` CLI on PATH and auto-starts the daemon on load.
@@ -233,3 +431,4 @@ The Create New Issue and Edit Issue forms will be consolidated into a single sha
 - `retainContextWhenHidden: true` keeps webview state when hidden.
 - Markdown preview uses marked.js with GFM and DOMPurify sanitization.
 - **Webview cache-busting:** The version in `src/webview.ts` must match `package.json` version for proper cache invalidation.
+- **Windows packaging:** Always use PowerShell, not Git Bash, for `vsce package` command.
