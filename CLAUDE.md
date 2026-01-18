@@ -14,6 +14,36 @@ This is a VS Code extension that provides a Kanban board interface for issues st
 - `npm run watch` - Watch mode for development
 - `npm run lint` - Run ESLint on TypeScript files
 
+### Packaging the Extension
+
+**IMPORTANT: Use PowerShell for packaging on Windows**
+
+Git Bash has issues running `vsce package` (silent failures with no output). Always use PowerShell:
+
+```powershell
+# In PowerShell (not Git Bash)
+vsce package
+```
+
+This will:
+1. Run `vscode:prepublish` script (which runs `npm run compile`)
+2. Compile TypeScript, copy dependencies, and build webview bundle
+3. Create `beads-kanban-{version}.vsix` file
+
+**Common Issues:**
+- If packaging fails silently in Git Bash, switch to PowerShell
+- Ensure you've run `npm run compile` successfully before packaging
+- Check that all TypeScript files compile without errors (`tsc -p .`)
+
+### Code Quality
+
+The project uses ESLint with strict TypeScript rules:
+
+- `.eslintrc.json` contains project-specific configuration
+- Test files (`.test.ts` and files in `test/`) have relaxed rules (allow `any` types)
+- All source code must pass `npm run lint` with no errors
+- Use `unknown` type instead of `any` in production code, with proper type assertions
+
 ### Testing
 
 - `npm test` - Run all tests (requires compile first via pretest)
@@ -202,3 +232,4 @@ The Create New Issue and Edit Issue forms will be consolidated into a single sha
 - Webview scripts are loaded via CSP nonce; HTML uses inline styles extensively.
 - `retainContextWhenHidden: true` keeps webview state when hidden.
 - Markdown preview uses marked.js with GFM and DOMPurify sanitization.
+- **Webview cache-busting:** The version in `src/webview.ts` must match `package.json` version for proper cache invalidation.
