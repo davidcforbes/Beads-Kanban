@@ -5,6 +5,49 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-01-19
+
+### 🚀 Performance
+
+- **Extension bundling**: Implemented esbuild bundling for both extension host and webview code
+  - Created `scripts/build-extension.js` to bundle all TypeScript sources into single file
+  - Extension host: All sources bundled into `out/extension.js` (631 KB)
+  - Webview: UI code + Pragmatic Drag and Drop bundled into `out/webview/board.js` (169 KB)
+  - **97% reduction in file count**: 900 files → 23 files
+  - **60% reduction in package size**: 2.26 MB → 912 KB
+  - Faster installation and extension activation time
+  - Improved overall performance
+
+### 🔧 Build System
+
+- **Build scripts**: Updated compilation pipeline
+  - `npm run build-extension` - Bundle extension host code
+  - `npm run build-webview` - Bundle webview code
+  - `npm run watch` - Watch mode with automatic rebuilding
+  - All dependencies bundled into output files (no node_modules in VSIX)
+
+- **.vscodeignore optimization**: Cleaned up package exclusions
+  - Exclude all source files (bundled into out/)
+  - Exclude all node_modules (dependencies bundled)
+  - Exclude development artifacts (test outputs, reports, workspace files)
+  - Keep only essential files for distribution (23 files total)
+
+### 📚 Documentation
+
+- **Extension bundling guide**: Added comprehensive bundling documentation to CLAUDE.md
+  - Why bundling is needed (performance benefits)
+  - Build scripts configuration and usage
+  - Development workflow with bundled code
+  - .vscodeignore configuration for optimal packaging
+  - External dependencies handling
+  - Debugging bundled code with source maps
+
+- **Publishing output reference**: Added before/after comparison showing bundling impact
+  - Documented expected vsce package output
+  - File count and size improvements
+
+---
+
 ## [2.0.5] - 2026-01-17
 
 ### 🐛 Bug Fixes

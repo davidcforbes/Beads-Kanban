@@ -423,6 +423,256 @@ git push --tags
 
 These must match for proper webview cache invalidation.
 
+### Version Bump and Package Workflow
+
+When creating a new version for marketplace publishing, follow these steps:
+
+**1. Update version numbers (2 files):**
+
+```bash
+# Edit package.json - change version field
+"version": "2.0.X"
+
+# Edit src/webview.ts - change version constant (line 6)
+const version = "2.0.X";
+```
+
+**2. Update CHANGELOG.md:**
+
+Add a new version entry at the top with:
+- Version number and date
+- Categories: 🚀 Performance, ✨ Added, 🐛 Bug Fixes, 🔧 Build System, 📚 Documentation, etc.
+- Bullet points describing changes
+- Follow Keep a Changelog format
+
+Example:
+```markdown
+## [2.0.X] - 2026-01-XX
+
+### 🚀 Performance
+
+- **Feature name**: Description of changes
+  - Technical details
+  - Impact metrics
+
+### 🐛 Bug Fixes
+
+- **Issue description**: How it was fixed
+```
+
+**3. Build and package:**
+
+```bash
+# Clean previous build artifacts (optional)
+rm beads-kanban-*.vsix
+
+# Build and package (runs all bundling automatically)
+npx @vscode/vsce package
+```
+
+Expected output:
+```
+✓ Extension host bundle built successfully
+✓ Webview bundle built successfully
+INFO  Files included in the VSIX:
+DONE  Packaged: beads-kanban-2.0.X.vsix (23 files, ~913 KB)
+```
+
+**4. Verify package contents:**
+
+```bash
+# List files in package
+npx @vscode/vsce ls beads-kanban-2.0.X.vsix
+
+# Check file size
+ls -lh beads-kanban-2.0.X.vsix
+```
+
+Should include only 23 files:
+- `out/extension.js` (bundled extension host)
+- `out/webview/board.js` (bundled webview)
+- `media/` (CSS, JS libraries)
+- `images/` (icon, screenshots)
+- Documentation (README, CHANGELOG, LICENSE, PUBLISHING, MIGRATION)
+- `.github/` (templates, workflows)
+
+**5. Test locally (optional but recommended):**
+
+```bash
+# Install in VS Code
+code --install-extension beads-kanban-2.0.X.vsix
+
+# Test all functionality:
+# - Open Kanban board in project with .beads/
+# - Verify drag-and-drop works
+# - Test edit forms
+# - Check all commands
+```
+
+**6. Publish to marketplace:**
+
+```bash
+# Publish (requires login with PAT)
+npx @vscode/vsce publish
+
+# Or publish specific version
+npx @vscode/vsce publish 2.0.X
+```
+
+**7. Commit and tag:**
+
+```bash
+# Stage version changes
+git add package.json src/webview.ts CHANGELOG.md
+
+# Commit
+git commit -m "Bump version to 2.0.X"
+
+# Create git tag
+git tag v2.0.X
+
+# Push to remote
+git push origin main
+git push origin v2.0.X
+```
+
+**Quick Reference - Files to Update:**
+
+| File | What to Change | Example |
+|------|---------------|---------|
+| `package.json` | `"version": "X.Y.Z"` | `"version": "2.0.6"` |
+| `src/webview.ts` | `const version = "X.Y.Z"` (line 6) | `const version = "2.0.6"` |
+| `CHANGELOG.md` | Add new version entry at top | See format above |
+
+**Common Issues:**
+
+- **Wrong file count**: If you see 742+ files instead of 23, check `.vscodeignore` is properly configured
+- **Large package size**: If size > 1 MB, ensure bundling is working (check for `out/extension.js`)
+- **Build fails**: Run `npm run compile` first to test bundling independently
+- **Version mismatch warning**: Ensure package.json and webview.ts versions match exactly
+
+### Publishing Output Reference
+
+**Expected output when packaging and publishing:**
+
+The `vsce package` and `vsce publish` commands will:
+1. Execute `vscode:prepublish` script (compile, copy-deps, build-webview)
+2. Bundle the extension files into a VSIX package
+3. Upload to the VS Code Marketplace (for publish command)
+
+**Bundling optimization:** The extension uses esbuild to bundle both:
+- Extension host code (`out/extension.js`) - Single bundled file from all TypeScript sources
+- Webview code (`out/webview/board.js`) - Bundled with Pragmatic Drag and Drop library
+
+This reduces the VSIX from 900+ files to under 50 files, improving:
+- Installation speed
+- Extension activation time
+- Overall performance
+
+**Before bundling optimization** (version 2.0.5 and earlier):
+```
+WARNING  This extension consists of 900 files, out of which 592 are JavaScript files.
+DONE  Packaged: beads-kanban-2.0.5.vsix (900 files, 2.26 MB)
+```
+
+**After bundling optimization** (version 2.0.6+):
+```
+✓ Extension host bundle built successfully
+✓ Webview bundle built successfully
+DONE  Packaged: beads-kanban-2.0.6.vsix (23 files, 912 KB)
+```
+
+This represents a 97% reduction in file count and 60% reduction in package size.
+
+See "Extension Bundling" section below for implementation details.
+
+## Extension Bundling
+
+The extension uses esbuild to bundle both the extension host code and webview code into single files, reducing the total file count from 900+ to under 50.
+
+### Why Bundle?
+
+**Problem:** Without bundling, the extension includes:
+- 900+ files (592 JavaScript files from node_modules)
+- 2.26 MB VSIX package size
+- Slow installation and activation
+
+**Solution:** Bundle extension host and webview code separately:
+- Extension host: All TypeScript sources bundled into `out/extension.js`
+- Webview: UI code + Pragmatic Drag and Drop bundled into `out/webview/board.js`
+- Result: ~40 files, ~1.2 MB VSIX, faster activation
+
+### Build Scripts
+
+**Extension host bundler:** `scripts/build-extension.js`
+- Bundles all TypeScript sources (`src/**/*.ts` except webview and tests)
+- Entry point: `src/extension.ts`
+- Output: `out/extension.js` (single file)
+- Platform: Node.js
+- External dependencies: `vscode` module (provided by VS Code)
+
+**Webview bundler:** `scripts/build-webview.js` (already exists)
+- Bundles webview UI code + Pragmatic Drag and Drop
+- Entry point: `src/webview/board.js`
+- Output: `out/webview/board.js`
+- Platform: Browser
+- Format: IIFE (immediately invoked function expression)
+
+### Build Configuration
+
+**package.json scripts:**
+```json
+{
+  "vscode:prepublish": "npm run compile",
+  "compile": "npm run build-extension && npm run build-webview && npm run copy-deps",
+  "build-extension": "node scripts/build-extension.js",
+  "build-webview": "node scripts/build-webview.js",
+  "watch": "npm run build-extension -- --watch"
+}
+```
+
+**Development workflow:**
+- `npm run compile` - Build everything (extension + webview)
+- `npm run watch` - Watch mode for development (auto-rebuild on file changes)
+- `npm run build-extension` - Build extension host only
+- `npm run build-webview` - Build webview only
+
+### .vscodeignore Updates
+
+The `.vscodeignore` file is updated to exclude source files and keep only the bundled outputs:
+```
+src/**              # Exclude source files
+out/test/**         # Exclude test outputs
+**/*.map            # Exclude source maps (keep for debugging if needed)
+node_modules/**     # Most of node_modules excluded
+!node_modules/zod/  # Keep zod runtime (if needed)
+scripts/**          # Exclude build scripts
+```
+
+**Important:** After bundling, the VSIX should include:
+- `out/extension.js` - Bundled extension host
+- `out/webview/board.js` - Bundled webview
+- `media/**` - Static assets (CSS, images, marked.js, purify.js)
+- `package.json`, `README.md`, `LICENSE`, `CHANGELOG.md`
+
+### External Dependencies
+
+Some dependencies must remain external (not bundled):
+- `vscode` - VS Code extension API (provided by host)
+- Test frameworks - Only used in development, not in production
+
+Runtime dependencies that ARE bundled:
+- `zod` - Used for validation at runtime
+- `@atlaskit/pragmatic-drag-and-drop` - Webview drag-and-drop (webview bundle)
+
+### Debugging Bundled Code
+
+Source maps are generated for debugging:
+- `out/extension.js.map` - Extension host source map
+- `out/webview/board.js.map` - Webview source map
+
+To debug, keep source maps in the VSIX by removing `**/*.map` from `.vscodeignore`.
+
 ## Important Notes
 
 - The extension requires `bd` CLI on PATH and auto-starts the daemon on load.

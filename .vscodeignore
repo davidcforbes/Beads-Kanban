@@ -1,28 +1,42 @@
+# VS Code settings
 .vscode/**
+
+# Source files (bundled into out/extension.js and out/webview/board.js)
 src/**
-**/*.map
 **/*.ts
-node_modules/**/test/**
-node_modules/**/tests/**
-node_modules/**/example/**
-node_modules/**/examples/**
-node_modules/**/docs/**
-node_modules/**/.github/**
+
+# Source maps (exclude for production, keep for debugging if needed)
+**/*.map
+
+# Test outputs
+out/test/**
+
+# Node modules (everything is bundled into out/extension.js and out/webview/board.js)
+node_modules/**
+# Note: All dependencies are bundled, no node_modules needed in VSIX
+
+# Git and version control
 .git/**
+.gitignore
+.gitattributes
+
+# Development files
 .DS_Store
 *.log
 .beads/**
 
-# Documentation & Specs
+# Documentation & Specs (keep only README, CHANGELOG, LICENSE, PUBLISHING, MIGRATION)
 AGENTS.md
 ARCHITECTURE_PROPOSAL_FAST_LOADING.md
+CLAUDE.md
 COMPREHENSIVE_TEST_PLAN.md
 CONTRIBUTING.md
+External_Dependencies_Review.md
 GEMINI.md
 SECURITY_REVIEW.md
 TESTING_STRATEGY.md
 TESTING.md
-# Keep CHANGELOG.md, README.md, and LICENSE
+# Keep CHANGELOG.md, README.md, LICENSE, PUBLISHING.md, MIGRATION.md
 
 # Build & Test Config
 .vscode-test.mjs
@@ -38,6 +52,12 @@ benchmark-results/**
 test-databases/**
 .serena/**
 .Archive/**
+*-report.md
+*-summary.md
+test-output*.txt
+typescript-*.txt
+vsce-*.txt
+package-log.txt
 
 # Scripts (unless runtime required, usually built into out/)
 scripts/**
@@ -45,6 +65,11 @@ scripts/**
 # Source Images (keep images/ used by README/icon)
 Beads-Kanban-Logo.png
 Beads-Kanban-Logo2.png
+# Exclude root-level screenshots (keep only images/ folder)
+Screenshot*.jpg
+Screenshot*.png
+Edit Form*.jpg
+*.code-workspace
 
 # Output
 out/test/**
