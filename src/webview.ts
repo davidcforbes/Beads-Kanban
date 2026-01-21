@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 
 export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   // Use package version for cache-busting (production-friendly, changes only on updates)
-  const version = "2.0.6";
+  const version = "2.1.0";
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "board.js")) + `?v=${version}`;
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "styles.css")) + `?v=${version}`;
   const graphStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "graph-styles.css")) + `?v=${version}`;
