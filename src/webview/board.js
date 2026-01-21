@@ -2,6 +2,7 @@
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
+import { GraphView } from './graph-view.js';
 
 const vscode = acquireVsCodeApi();
 
@@ -17,6 +18,11 @@ const detDesc = document.getElementById("detDesc");
 const detMeta = document.getElementById("detMeta");
 const addToChatBtn = document.getElementById("addToChatBtn");
 const copyContextBtn = document.getElementById("copyContextBtn");
+
+// Debug: Log dialog state on load
+console.log('[DEBUG] detDialog element:', detDialog);
+console.log('[DEBUG] Dialog open on load:', detDialog ? detDialog.open : 'null');
+console.log('[DEBUG] purifyConfig will be defined below with all necessary tags');
 
 const filterPriorityBtn = document.getElementById("filterPriorityBtn");
 const filterPriorityLabel = document.getElementById("filterPriorityLabel");
@@ -337,6 +343,21 @@ if (filterStatusBtn && filterStatusDropdown) {
 
 const viewKanbanBtn = document.getElementById("viewKanbanBtn");
 const viewTableBtn = document.getElementById("viewTableBtn");
+const viewGraphBtn = document.getElementById("viewGraphBtn");
+
+// Graph view elements
+const dependencyDiagram = document.getElementById("dependencyDiagram");
+const focusModeToggle = document.getElementById("focusModeToggle");
+const focusDepthInput = document.getElementById("focusDepth");
+const graphDirectionSelect = document.getElementById("graphDirection");
+const autoLayoutBtn = document.getElementById("autoLayoutBtn");
+const resetLayoutBtn = document.getElementById("resetLayoutBtn");
+const centerViewBtn = document.getElementById("centerViewBtn");
+const zoomInBtn = document.getElementById("zoomInBtn");
+const zoomOutBtn = document.getElementById("zoomOutBtn");
+const zoomResetBtn = document.getElementById("zoomResetBtn");
+const nodeCountEl = document.getElementById("nodeCount");
+const edgeCountEl = document.getElementById("edgeCount");
 
 // Column-based state for incremental loading
 let columns = [];
@@ -410,8 +431,18 @@ detDialog.addEventListener("cancel", (event) => {
 const vscodeState = vscode.getState() || {};
 const collapsedColumns = new Set(vscodeState.collapsedColumns || []);
 
-// View mode: 'kanban' (default) or 'table'
+// View mode: 'kanban' (default), 'table', or 'graph'
 let viewMode = vscodeState.viewMode || 'kanban';
+
+// Initialize graph view
+let graphView = null;
+let graphState = {
+  focusMode: false,
+  focusNodeId: null,
+  focusDepth: 2,
+  direction: 'TB'
+};
+let isRenderingGraph = false; // Guard to prevent concurrent graph renders
 
 // Table-specific state
 let tableState = {
@@ -1004,7 +1035,9 @@ function render() {
     // Reset table pagination when filters/sort changes (user likely wants to see results from page 1)
     tablePaginationState.currentPage = 0;
 
-    if (viewMode === 'table') {
+    if (viewMode === 'graph') {
+        renderGraph();
+    } else if (viewMode === 'table') {
         renderTable();
     } else {
         renderKanban();
@@ -1871,6 +1904,219 @@ function handleColumnSort(columnId, isShiftKey) {
     render();
 }
 
+// Graph view rendering
+async function renderGraph() {
+    // Guard: Prevent concurrent renders
+    if (isRenderingGraph) {
+        return;
+    }
+
+    isRenderingGraph = true;
+
+    try {
+        // Hide board, show graph container
+        boardEl.classList.add('hidden');
+        dependencyDiagram.classList.remove('hidden');
+
+        // Initialize graph view if not already created
+        if (!graphView) {
+            graphView = new GraphView(dependencyDiagram, {
+                onNodeClick: (card) => {
+                    openDetail(card);
+                },
+                onNodeDrag: (nodeId, x, y) => {
+                    // TODO: Save node positions to state
+                    console.log(`Node ${nodeId} dragged to ${x}, ${y}`);
+                }
+            });
+        }
+
+        // Get all cards (apply filters) - these are EnrichedCard without dependencies
+        const enrichedCards = getFilteredCards();
+
+        // Batch-load full details with dependencies for graph rendering
+        const fullCards = [];
+        for (const card of enrichedCards) {
+            // Use the same getIssueFull mechanism that the detail form uses
+            const fullCard = await new Promise((resolve, reject) => {
+                const reqId = requestId();
+                const timeoutId = setTimeout(() => {
+                    if (pendingRequests.has(reqId)) {
+                        pendingRequests.delete(reqId);
+                        reject(new Error(`Timeout loading ${card.id}`));
+                    }
+                }, 30000);
+
+                pendingRequests.set(reqId, { resolve, reject, timeoutId, createdAt: Date.now() });
+                vscode.postMessage({ type: 'issue.getFull', requestId: reqId, payload: { id: card.id } });
+            });
+
+            // Extract the card from the response (response is the full message object)
+            if (fullCard && fullCard.payload && fullCard.payload.card) {
+                fullCards.push(fullCard.payload.card);
+            }
+        }
+
+        // Build graph data
+        const layoutOptions = {
+            direction: graphState.direction,
+            focusMode: graphState.focusMode,
+            focusNodeId: graphState.focusNodeId,
+            focusDepth: graphState.focusDepth
+        };
+
+        // Render the graph with full card data (includes parent, children, blocks, blocked_by)
+        const layout = graphView.render(fullCards, layoutOptions);
+
+        // Update stats
+        if (nodeCountEl && edgeCountEl) {
+            nodeCountEl.textContent = layout.nodes.length;
+            edgeCountEl.textContent = layout.edges.length;
+        }
+
+        // Populate sidebar issue list
+        populateGraphSidebar(enrichedCards);
+
+        // Wire up context menu actions (only once)
+        if (!graphView.contextMenuWired) {
+            setupGraphContextMenu();
+            graphView.contextMenuWired = true;
+        }
+    } catch (error) {
+        console.error('[Graph] Render error:', error);
+        toast('Failed to render graph: ' + error.message);
+    } finally {
+        // Always clear the rendering flag
+        isRenderingGraph = false;
+    }
+}
+
+function populateGraphSidebar(cards) {
+    const issueList = document.getElementById('graphIssueList');
+    if (!issueList) return;
+
+    issueList.innerHTML = '';
+
+    for (const card of cards) {
+        const item = document.createElement('div');
+        item.className = 'graph-issue-item';
+        item.setAttribute('data-issue-id', card.id);
+
+        const idSpan = document.createElement('span');
+        idSpan.className = 'issue-id';
+        idSpan.textContent = card.id;
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'issue-title';
+        titleSpan.textContent = card.title;
+
+        item.appendChild(idSpan);
+        item.appendChild(titleSpan);
+
+        // Click to focus on node in graph
+        item.addEventListener('click', () => {
+            if (graphView) {
+                graphView.clearSelection();
+                const node = graphView.currentNodes.find(n => n.id === card.id);
+                if (node) {
+                    graphView.selectNode(node, false);
+                    // Center view on selected node
+                    graphView.centerView([node]);
+                }
+            }
+        });
+
+        issueList.appendChild(item);
+    }
+}
+
+function setupGraphContextMenu() {
+    const contextMenu = document.getElementById('graphContextMenu');
+    if (!contextMenu) return;
+
+    contextMenu.addEventListener('click', (e) => {
+        const action = e.target.getAttribute('data-action');
+        if (!action || e.target.classList.contains('disabled')) return;
+
+        if (action === 'link') {
+            linkSelectedIssues();
+        } else if (action === 'unlink') {
+            unlinkSelectedIssues();
+        } else if (action === 'focus') {
+            focusOnSelectedNode();
+        }
+
+        contextMenu.classList.add('hidden');
+    });
+}
+
+function linkSelectedIssues() {
+    if (!graphView || graphView.selectedNodeIds.size < 2) {
+        console.warn('Need at least 2 selected nodes to link');
+        return;
+    }
+
+    const selectedIds = Array.from(graphView.selectedNodeIds);
+    // Link first node to all others (parent-child or blocks relationship)
+    const fromId = selectedIds[0];
+    for (let i = 1; i < selectedIds.length; i++) {
+        const toId = selectedIds[i];
+        post('issue.addDependency', {
+            id: fromId,
+            otherId: toId,
+            type: 'blocks'
+        });
+    }
+
+    setTimeout(() => {
+        post('board.refresh');
+    }, 200);
+}
+
+function unlinkSelectedIssues() {
+    if (!graphView || graphView.selectedNodeIds.size === 0) {
+        console.warn('Need at least 1 selected node to unlink');
+        return;
+    }
+
+    const selectedIds = Array.from(graphView.selectedNodeIds);
+    // Remove all dependencies between selected nodes
+    for (let i = 0; i < selectedIds.length; i++) {
+        for (let j = i + 1; j < selectedIds.length; j++) {
+            post('issue.removeDependency', {
+                id: selectedIds[i],
+                otherId: selectedIds[j]
+            });
+            post('issue.removeDependency', {
+                id: selectedIds[j],
+                otherId: selectedIds[i]
+            });
+        }
+    }
+
+    setTimeout(() => {
+        post('board.refresh');
+    }, 200);
+}
+
+function focusOnSelectedNode() {
+    if (!graphView || graphView.selectedNodeIds.size === 0) {
+        console.warn('Need a selected node to focus');
+        return;
+    }
+
+    const selectedId = Array.from(graphView.selectedNodeIds)[0];
+    graphState.focusMode = true;
+    graphState.focusNodeId = selectedId;
+
+    const focusModeToggle = document.getElementById('focusModeToggle');
+    if (focusModeToggle) {
+        focusModeToggle.checked = true;
+    }
+
+    renderGraph();
+}
+
 // Removed duplicate escapeHtml function - using the DOM-based implementation at line ~284 instead
 
 // View toggle event listeners
@@ -1879,6 +2125,9 @@ viewKanbanBtn.addEventListener("click", () => {
         viewMode = 'kanban';
         viewKanbanBtn.classList.add('active');
         viewTableBtn.classList.remove('active');
+        viewGraphBtn.classList.remove('active');
+        boardEl.classList.remove('hidden');
+        dependencyDiagram.classList.add('hidden');
         saveState();
         render();
     }
@@ -1889,18 +2138,122 @@ viewTableBtn.addEventListener("click", () => {
         viewMode = 'table';
         viewTableBtn.classList.add('active');
         viewKanbanBtn.classList.remove('active');
+        viewGraphBtn.classList.remove('active');
+        boardEl.classList.remove('hidden');
+        dependencyDiagram.classList.add('hidden');
+        saveState();
+        render();
+    }
+});
+
+viewGraphBtn.addEventListener("click", () => {
+    if (viewMode !== 'graph') {
+        viewMode = 'graph';
+        viewGraphBtn.classList.add('active');
+        viewKanbanBtn.classList.remove('active');
+        viewTableBtn.classList.remove('active');
         saveState();
         render();
     }
 });
 
 // Initialize view toggle buttons based on saved state
-if (viewMode === 'table') {
+if (viewMode === 'graph') {
+    viewGraphBtn.classList.add('active');
+    viewKanbanBtn.classList.remove('active');
+    viewTableBtn.classList.remove('active');
+    boardEl.classList.add('hidden');
+    dependencyDiagram.classList.remove('hidden');
+} else if (viewMode === 'table') {
     viewTableBtn.classList.add('active');
     viewKanbanBtn.classList.remove('active');
+    viewGraphBtn.classList.remove('active');
 } else {
     viewKanbanBtn.classList.add('active');
     viewTableBtn.classList.remove('active');
+    viewGraphBtn.classList.remove('active');
+}
+
+// Graph control event listeners
+if (focusModeToggle) {
+    focusModeToggle.addEventListener('change', () => {
+        graphState.focusMode = focusModeToggle.checked;
+        // If enabling focus mode but no node is selected, use the first node
+        if (graphState.focusMode && !graphState.focusNodeId && graphView) {
+            graphState.focusNodeId = graphView.getSelectedNodeId();
+        }
+        if (viewMode === 'graph') {
+            renderGraph();
+        }
+    });
+}
+
+if (focusDepthInput) {
+    focusDepthInput.addEventListener('change', () => {
+        graphState.focusDepth = parseInt(focusDepthInput.value, 10);
+        if (viewMode === 'graph') {
+            renderGraph();
+        }
+    });
+}
+
+if (graphDirectionSelect) {
+    graphDirectionSelect.addEventListener('change', () => {
+        graphState.direction = graphDirectionSelect.value;
+        if (viewMode === 'graph') {
+            renderGraph();
+        }
+    });
+}
+
+if (autoLayoutBtn) {
+    autoLayoutBtn.addEventListener('click', () => {
+        if (graphView && viewMode === 'graph') {
+            // Clear saved positions and re-calculate layout
+            graphView.clearSavedPositions();
+            renderGraph();
+        }
+    });
+}
+
+if (resetLayoutBtn) {
+    resetLayoutBtn.addEventListener('click', () => {
+        if (graphView) {
+            graphView.resetView();
+        }
+    });
+}
+
+if (centerViewBtn) {
+    centerViewBtn.addEventListener('click', () => {
+        if (graphView && viewMode === 'graph') {
+            renderGraph(); // Re-render to center
+        }
+    });
+}
+
+if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', () => {
+        if (graphView) {
+            graphView.zoom(1.5);
+        }
+    });
+}
+
+if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', () => {
+        if (graphView) {
+            graphView.zoom(0.67);
+        }
+    });
+}
+
+if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+        if (graphView) {
+            graphView.resetView();
+        }
+    });
 }
 
 refreshBtn.addEventListener("click", () => post("board.refresh"));
@@ -2601,6 +2954,8 @@ function refreshStaticFormIssueDatalist(form, card) {
 }
 
 async function openDetail(card) {
+    console.log('[DEBUG] openDetail called with card:', card ? { id: card.id, title: card.title } : null);
+    console.log('[DEBUG] Stack trace:', new Error().stack);
 
     if (!card) return;
 
@@ -2609,6 +2964,8 @@ async function openDetail(card) {
         console.error('Detail dialog element not found');
         return;
     }
+
+    console.log('[DEBUG] Dialog exists, proceeding to open');
 
     // Phase 2: Load full issue details if editing existing issue
     const isCreateMode = card.id === null;

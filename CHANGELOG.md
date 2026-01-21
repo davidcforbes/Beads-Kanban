@@ -5,16 +5,42 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.6] - 2026-01-19
+## [2.0.6] - 2026-01-20
+
+### ✨ New Features
+
+- **Dependency Graph View**: Visualize issue relationships with interactive dependency graph
+  - Third view mode alongside Kanban and Table views
+  - Hierarchical BFS-based layout algorithm
+  - Visual dependency types: parent-child (green), blocks (red dashed), blocked-by (orange dashed)
+  - Node colors by status: ready (yellow), in progress (green), blocked (red), closed (gray)
+  - Interactive features: drag nodes, click to edit, zoom/pan controls
+  - Focus mode to view specific issue + N levels of dependencies
+  - Auto-layout with top-bottom or left-right direction
+  - Legend showing node status colors and edge types
+  - Sidebar with issue list for quick navigation
+
+### 🐛 Bug Fixes
+
+- **Dependency extraction**: Fixed parent, children, and blocked_by relationships not displaying in edit form
+  - Root cause: extractParentDependency was checking wrong field (dependents vs dependencies)
+  - Now correctly reads from issue.dependencies for parent and blocker relationships
+  - Now correctly reads from issue.dependents for children and blocked issues
+- **Graph edge deduplication**: Fixed phantom duplicate arrows in dependency graph
+  - Added edge deduplication using Set to track unique edges
+  - Each relationship now creates only one edge, even if found in both directions
+- **Graph infinite loop**: Fixed concurrent render operations causing browser freeze
+  - Added concurrency guard to prevent multiple simultaneous graph renders
+  - Proper error handling with try/catch/finally blocks
 
 ### 🚀 Performance
 
 - **Extension bundling**: Implemented esbuild bundling for both extension host and webview code
   - Created `scripts/build-extension.js` to bundle all TypeScript sources into single file
-  - Extension host: All sources bundled into `out/extension.js` (631 KB)
-  - Webview: UI code + Pragmatic Drag and Drop bundled into `out/webview/board.js` (169 KB)
-  - **97% reduction in file count**: 900 files → 23 files
-  - **60% reduction in package size**: 2.26 MB → 912 KB
+  - Extension host: All sources bundled into `out/extension.js` (636 KB)
+  - Webview: UI code + Pragmatic Drag and Drop bundled into `out/webview/board.js` (243 KB total)
+  - **97% reduction in file count**: 900 files → 31 files
+  - **60% reduction in package size**: 2.26 MB → 1.54 MB
   - Faster installation and extension activation time
   - Improved overall performance
 

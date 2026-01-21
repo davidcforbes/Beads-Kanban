@@ -6,6 +6,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   const version = "2.0.6";
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "board.js")) + `?v=${version}`;
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "styles.css")) + `?v=${version}`;
+  const graphStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "graph-styles.css")) + `?v=${version}`;
+  const graphLayoutUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "graph-layout.js")) + `?v=${version}`;
+  const graphViewUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "graph-view.js")) + `?v=${version}`;
   const dompurifyUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "purify.min.js")) + `?v=${version}`;
   const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "marked.min.js")) + `?v=${version}`;
 
@@ -44,6 +47,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
                  manifest-src 'none';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}" rel="stylesheet" />
+  <link href="${graphStyleUri}" rel="stylesheet" />
   <title>Agent Native Abstraction Layer for Beads</title>
 </head>
 <body>
@@ -56,6 +60,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
       <div class="view-toggle">
         <button id="viewKanbanBtn" class="view-toggle-btn active">Kanban</button>
         <button id="viewTableBtn" class="view-toggle-btn">Table</button>
+        <button id="viewGraphBtn" class="view-toggle-btn">Graph</button>
       </div>
       <div class="filters">
         <input id="filterSearch" type="text" placeholder="Search... (${modKey}+F)" title="Focus search (${modKey}+F)" class="search-input" />
@@ -111,6 +116,106 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
   <main>
     <div id="board" class="board"></div>
+    <div id="dependencyDiagram" class="dependency-diagram hidden">
+      <!-- Left Sidebar: Issue List -->
+      <div class="graph-sidebar">
+        <div class="graph-sidebar-header">
+          <h3>ISSUES</h3>
+        </div>
+        <div id="graphIssueList" class="graph-issue-list">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Main Graph Area -->
+      <div class="graph-main">
+        <div class="graph-controls">
+          <div class="graph-controls-group">
+            <label>
+              <input type="checkbox" id="focusModeToggle" />
+              Focus Mode
+            </label>
+            <label for="focusDepth">Depth:</label>
+            <input type="number" id="focusDepth" min="1" max="5" value="2" style="width: 50px;" />
+          </div>
+          <div class="graph-controls-group">
+            <label for="graphDirection">Direction:</label>
+            <select id="graphDirection">
+              <option value="TB">Top to Bottom</option>
+              <option value="LR">Left to Right</option>
+            </select>
+          </div>
+          <div class="graph-controls-group">
+            <button id="autoLayoutBtn" class="secondary">Auto Layout</button>
+            <button id="resetLayoutBtn" class="secondary">Reset View</button>
+            <button id="centerViewBtn" class="secondary">Center View</button>
+          </div>
+          <div class="graph-stats">
+            <div class="graph-stat">
+              <span class="graph-stat-label">Nodes:</span>
+              <span id="nodeCount" class="graph-stat-value">0</span>
+            </div>
+            <div class="graph-stat">
+              <span class="graph-stat-label">Edges:</span>
+              <span id="edgeCount" class="graph-stat-value">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="graph-canvas-container">
+          <svg id="graphSvg" class="graph-svg"></svg>
+          <div class="graph-legend">
+            <h4>Legend</h4>
+            <div class="graph-legend-section">
+              <h5>Node Status</h5>
+              <div class="graph-legend-item">
+                <div class="legend-color-box status-ready"></div>
+                <span class="legend-text">Ready</span>
+              </div>
+              <div class="graph-legend-item">
+                <div class="legend-color-box status-in_progress"></div>
+                <span class="legend-text">In Progress</span>
+              </div>
+              <div class="graph-legend-item">
+                <div class="legend-color-box status-blocked"></div>
+                <span class="legend-text">Blocked</span>
+              </div>
+              <div class="graph-legend-item">
+                <div class="legend-color-box status-closed"></div>
+                <span class="legend-text">Closed</span>
+              </div>
+            </div>
+            <div class="graph-legend-section">
+              <h5>Dependencies</h5>
+              <div class="graph-legend-item">
+                <div class="legend-line parent-child"></div>
+                <span class="legend-text">Parent-Child</span>
+              </div>
+              <div class="graph-legend-item">
+                <div class="legend-line blocks"></div>
+                <span class="legend-text">Blocks</span>
+              </div>
+              <div class="graph-legend-item">
+                <div class="legend-line blocked-by"></div>
+                <span class="legend-text">Blocked By</span>
+              </div>
+            </div>
+          </div>
+          <div class="zoom-controls">
+            <button id="zoomInBtn" title="Zoom In">+</button>
+            <button id="zoomOutBtn" title="Zoom Out">−</button>
+            <button id="zoomResetBtn" title="Reset Zoom">⊙</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Context Menu -->
+      <div id="graphContextMenu" class="graph-context-menu hidden">
+        <div class="context-menu-item" data-action="link">Link Selected Issues</div>
+        <div class="context-menu-item" data-action="unlink">Remove Dependency</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="focus">Focus on Node</div>
+      </div>
+    </div>
   </main>
 
   <!-- Static Edit Issue Dialog - populated dynamically via JS -->
@@ -349,6 +454,8 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
   <script nonce="${nonce}" src="${dompurifyUri}"></script>
   <script nonce="${nonce}" src="${markedUri}"></script>
+  <script nonce="${nonce}" type="module" src="${graphLayoutUri}"></script>
+  <script nonce="${nonce}" type="module" src="${graphViewUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

@@ -311,3 +311,42 @@ export const BoardLoadColumnSchema = z.object({
 export const BoardLoadMoreSchema = z.object({
   column: BoardColumnKeySchema
 });
+
+// Graph View Types
+export interface GraphNode {
+  id: string;
+  card: EnrichedCard | FullCard;
+  x: number;
+  y: number;
+  layer: number; // BFS depth level
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  type: 'parent-child' | 'blocks' | 'blocked-by';
+}
+
+export interface GraphViewState {
+  nodePositions?: Record<string, { x: number; y: number }>;
+  focusMode: boolean;
+  focusDepth: number;
+  direction: 'TB' | 'LR';
+  zoom: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GraphLayoutOptions {
+  direction?: 'TB' | 'LR';
+  nodeWidth?: number;
+  nodeHeight?: number;
+  horizontalSpacing?: number;
+  verticalSpacing?: number;
+  focusMode?: boolean;
+  focusNodeId?: string;
+  focusDepth?: number;
+}

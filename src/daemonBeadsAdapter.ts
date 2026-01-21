@@ -633,7 +633,7 @@ export class DaemonBeadsAdapter {
       const parent = this.extractParentDependency(issue);
       const children = this.extractChildrenDependencies(issue);
       const blocks = this.extractBlocksDependencies(issue);
-      const blocked_by = this.extractBlockedByDependencies();
+      const blocked_by = this.extractBlockedByDependencies(issue);
 
       // Map labels
       let labels: string[] = [];
@@ -725,14 +725,15 @@ export class DaemonBeadsAdapter {
 
   /**
    * Extract parent dependency from issue data
+   * NOTE: Parent is in "dependencies" (issues THIS issue depends on)
    */
   private extractParentDependency(issue: Record<string, unknown>): DependencyInfo | undefined {
-    if (!issue.dependents || !Array.isArray(issue.dependents)) {
+    if (!issue.dependencies || !Array.isArray(issue.dependencies)) {
       return undefined;
     }
 
     // Find parent-child dependency where this issue is the child
-    for (const d of issue.dependents) {
+    for (const d of issue.dependencies) {
       const dep = d as Record<string, unknown>;
       if (dep.dependency_type === 'parent-child' && dep.id !== issue.id) {
         return {
@@ -805,13 +806,31 @@ export class DaemonBeadsAdapter {
 
   /**
    * Extract blocked_by dependencies from issue data
+   * NOTE: Blockers are in "dependencies" (issues THIS issue depends on)
    */
-  private extractBlockedByDependencies(): DependencyInfo[] {
-    // Note: bd show returns "dependents" which are issues that depend on THIS issue
-    // To get blocked_by, we need to look at dependencies where this issue is blocked
-    // This information might not be in the response, so we return empty for now
-    // TODO: Check if bd show provides this information
-    return [];
+  private extractBlockedByDependencies(issue: Record<string, unknown>): DependencyInfo[] {
+    const blockedBy: DependencyInfo[] = [];
+
+    if (!issue.dependencies || !Array.isArray(issue.dependencies)) {
+      return blockedBy;
+    }
+
+    // Find "blocks" dependencies where this issue is being blocked
+    for (const d of issue.dependencies) {
+      const dep = d as Record<string, unknown>;
+      if (dep.dependency_type === 'blocks' && dep.id !== issue.id) {
+        blockedBy.push({
+          id: dep.id as string,
+          title: dep.title as string,
+          created_at: dep.created_at as string,
+          created_by: (dep.created_by as string) || 'unknown',
+          metadata: dep.metadata as string | undefined,
+          thread_id: dep.thread_id as string | undefined
+        });
+      }
+    }
+
+    return blockedBy;
   }
 
   /**

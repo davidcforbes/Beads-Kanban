@@ -2,7 +2,7 @@
 
 A visual Kanban board VS Code extension for managing [Beads](https://github.com/steveyegge/beads) issues directly in your editor. View, create, edit, and organize your `.beads` issues with an intuitive drag-and-drop interface.
 
-![Version](https://img.shields.io/badge/version-2.0.5-blue)
+![Version](https://img.shields.io/badge/version-2.0.6-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![VS Code](https://img.shields.io/badge/VS%20Code-1.90+-blue)
 
@@ -19,6 +19,12 @@ Drag-and-drop cards between columns to manage your workflow.
 Sort, filter, and customize columns for detailed issue management.
 
 ![Table View](https://raw.githubusercontent.com/davidcforbes/beads-kanban/main/images/screenshots/table-view.jpg)
+
+### Dependency Graph View
+
+Visualize issue relationships and dependencies with an interactive graph.
+
+![Graph View](https://raw.githubusercontent.com/davidcforbes/beads-kanban/main/images/screenshots/graph-view.jpg)
 
 ### Edit Issue Form
 
@@ -40,6 +46,14 @@ Comprehensive issue editing with all metadata fields, dependencies, and comments
 - Customizable column visibility
 - Pagination with configurable page sizes
 - Filter by priority, type, status, and search
+
+🔗 **Dependency Graph**
+
+- Interactive visualization of issue relationships
+- Hierarchical layout with parent-child and blocking dependencies
+- Focus mode to explore specific issues and their dependencies
+- Drag nodes, zoom/pan controls
+- Color-coded by status with visual legend
 
 🔧 **Full Issue Management**
 
