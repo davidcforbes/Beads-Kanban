@@ -39,6 +39,7 @@ TESTING.md
 # Keep CHANGELOG.md, README.md, LICENSE, PUBLISHING.md, MIGRATION.md
 
 # Build & Test Config
+.node-version
 .vscode-test.mjs
 .gitignore
 .gitattributes
