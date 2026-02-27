@@ -220,19 +220,21 @@ suite('Read-Only Mode and UX Feedback Tests', () => {
     });
 
     suite('UX Feedback: Issue Details', () => {
-        test('Detail dialog has title element', () => {
+        test('Detail dialog has title input', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detTitle"'), 'Detail dialog should have title element');
+            assert.ok(html.includes('id="editTitle"'), 'Detail dialog should have title input');
         });
 
-        test('Detail dialog has meta section for badges', () => {
+        test('Detail dialog has status/type/priority fields', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detMeta"'), 'Detail dialog should have meta section for badges');
+            assert.ok(html.includes('id="editStatus"'), 'Detail dialog should have status field');
+            assert.ok(html.includes('id="editType"'), 'Detail dialog should have type field');
+            assert.ok(html.includes('id="editPriority"'), 'Detail dialog should have priority field');
         });
 
-        test('Detail dialog has description section', () => {
+        test('Detail dialog has description field', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detDesc"'), 'Detail dialog should have description section');
+            assert.ok(html.includes('id="editDesc"'), 'Detail dialog should have description field');
         });
 
         test('Note: Priority should be visually distinct', () => {
