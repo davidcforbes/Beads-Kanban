@@ -190,14 +190,15 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
         this.timeout(10000);
 
         try {
-            await assert.rejects(
-                async () => await adapter.getIssueFull('beads-non-existent-12345'),
-                /Issue not found/,
-                'Should reject with Issue not found error'
-            );
+            await adapter.getIssueFull('beads-non-existent-12345');
+            assert.fail('Should have thrown an error');
         } catch (err) {
             skipIfNoBd(err, this);
-            throw err;
+            // If we didn't skip, bd is available — verify the expected error
+            assert.ok(
+                err instanceof Error && /Issue not found/.test(err.message),
+                'Should reject with Issue not found error'
+            );
         }
     });
 });

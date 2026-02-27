@@ -317,6 +317,7 @@ export class DaemonBeadsAdapter {
 
       child.on('error', (error) => {
         if (!killed) {
+          killed = true;
           clearTimeout(timeoutHandle);
           this.output.appendLine(`[DaemonBeadsAdapter] Command error: ${error.message}`);
           this.output.appendLine(`[DaemonBeadsAdapter] Command context: ${command} (cwd: ${this.workspaceRoot})`);
