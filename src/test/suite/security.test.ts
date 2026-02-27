@@ -41,24 +41,22 @@ suite('Security Tests', () => {
             assert.ok(!result.includes('\0'), 'Result should not contain null bytes');
         });
 
-        test('Replaces newlines with spaces to prevent command splitting', () => {
+        test('Preserves newlines for markdown formatting', () => {
             const input = 'line1\nline2\rline3\r\nline4';
             const result = (adapter as any).sanitizeCliArg(input);
-            assert.strictEqual(result, 'line1 line2 line3 line4', 'Newlines should be replaced with spaces');
-            assert.ok(!result.includes('\n'), 'Result should not contain newlines');
-            assert.ok(!result.includes('\r'), 'Result should not contain carriage returns');
+            assert.strictEqual(result, input, 'Newlines should be preserved (shell:false prevents injection)');
         });
 
-        test('Collapses multiple spaces into single space', () => {
+        test('Preserves multiple spaces for markdown formatting', () => {
             const input = 'word1    word2     word3';
             const result = (adapter as any).sanitizeCliArg(input);
-            assert.strictEqual(result, 'word1 word2 word3', 'Multiple spaces should collapse to single space');
+            assert.strictEqual(result, input, 'Multiple spaces should be preserved for markdown');
         });
 
-        test('Trims leading and trailing whitespace', () => {
+        test('Preserves leading and trailing whitespace', () => {
             const input = '   trimmed   ';
             const result = (adapter as any).sanitizeCliArg(input);
-            assert.strictEqual(result, 'trimmed', 'Whitespace should be trimmed');
+            assert.strictEqual(result, input, 'Whitespace should be preserved (shell:false prevents injection)');
         });
 
         test('Handles empty string', () => {
@@ -70,7 +68,7 @@ suite('Security Tests', () => {
         test('Handles whitespace-only string', () => {
             const input = '   \n\r\t   ';
             const result = (adapter as any).sanitizeCliArg(input);
-            assert.strictEqual(result, '', 'Whitespace-only string should become empty');
+            assert.strictEqual(result, input, 'Whitespace-only string should be preserved (shell:false prevents injection)');
         });
 
         test('Handles non-string input gracefully', () => {
