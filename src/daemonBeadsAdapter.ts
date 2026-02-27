@@ -8,7 +8,8 @@ import {
   FullCard,
   IssueStatus,
   DependencyInfo,
-  Comment
+  Comment,
+  ISSUE_ID_PATTERN
 } from './types';
 
 /**
@@ -82,13 +83,14 @@ export class DaemonBeadsAdapter {
       throw new Error(`Invalid issue ID: whitespace not allowed (${issueId})`);
     }
 
-    // Validate format: beads-xxxx or project.beads-xxxx
+    // Validate format: prefix-suffix (e.g., beads-abc, smth-abc, project.beads-abc)
+    // The prefix is configurable per-project, so we don't hardcode "beads-"
     // This prevents arbitrary strings from being passed to bd commands
-    // Allow hyphens and dots in the ID suffix (e.g., beads-kanban-3ae, beads-hct.2)
+    // Allow hyphens and dots in the ID (e.g., beads-kanban-3ae, smth-abc, beads-hct.2)
     // BUT prevent consecutive special characters to avoid argument injection
-    const validPattern = /^([a-z0-9]+([._-][a-z0-9]+)*\.)?beads-[a-z0-9]+([._-][a-z0-9]+)*$/i;
+    const validPattern = ISSUE_ID_PATTERN;
     if (!validPattern.test(issueId)) {
-      throw new Error(`Invalid issue ID format: ${issueId}. Expected format: beads-xxxx or project.beads-xxxx`);
+      throw new Error(`Invalid issue ID format: ${issueId}. Expected format: prefix-xxxx or project.prefix-xxxx`);
     }
 
     // Defense in depth: reject shell metacharacters

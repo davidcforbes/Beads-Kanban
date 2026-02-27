@@ -228,12 +228,15 @@ export interface ColumnData extends ColumnLoadState {
 
 export type ColumnDataMap = Record<BoardColumnKey, ColumnData>;
 
+// Issue ID format: [project.]prefix-suffix (e.g. beads-abc, smth-abc.3, my-org.beads-xyz)
+// Alphanumeric segments separated by dots/underscores/hyphens; at least one hyphen required.
+// Prevents consecutive special characters, path traversal, XSS, and command injection.
+export const ISSUE_ID_PATTERN = /^([a-z0-9]+([._-][a-z0-9]+)*\.)?[a-z0-9]+-[a-z0-9]+([._-][a-z0-9]+)*$/i;
+
 // Zod validation schemas for runtime message validation
-// Strict issue ID format: project.name-suffix (prevents path traversal, XSS, command injection)
-// Must start with alphanumeric, can contain alphanumeric/dots/hyphens, must end with -suffix
 export const IssueIdSchema = z.string().regex(
-  /^[a-z0-9][a-z0-9.-]*-[a-z0-9]+$/i,
-  'Invalid issue ID format - must match pattern: project-suffix'
+  ISSUE_ID_PATTERN,
+  'Invalid issue ID format - must match pattern: prefix-suffix'
 );
 const BoardColumnKeySchema = z.enum(['ready', 'open', 'in_progress', 'blocked', 'closed']);
 

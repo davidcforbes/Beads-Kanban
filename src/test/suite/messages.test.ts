@@ -4,7 +4,8 @@ import {
     IssueCreateSchema,
     CommentAddSchema,
     LabelSchema,
-    DependencySchema
+    DependencySchema,
+    IssueIdSchema
 } from '../../types';
 
 suite('Message Validation Tests', () => {
@@ -157,5 +158,21 @@ suite('Message Validation Tests', () => {
 
         const result = DependencySchema.safeParse(invalidDep);
         assert.ok(!result.success, 'Invalid dependency type should fail validation');
+    });
+
+    test('IssueIdSchema: Accepts IDs with dots in suffix', () => {
+        const validIds = ['smth-abc.3', 'beads-hct.2', 'smth-abc7.3', 'beads-kanban-3ae'];
+        for (const id of validIds) {
+            const result = IssueIdSchema.safeParse(id);
+            assert.ok(result.success, `ID "${id}" should pass validation`);
+        }
+    });
+
+    test('IssueIdSchema: Rejects IDs with consecutive special characters', () => {
+        const invalidIds = ['smth--abc', 'smth..abc', 'smth-.abc'];
+        for (const id of invalidIds) {
+            const result = IssueIdSchema.safeParse(id);
+            assert.ok(!result.success, `ID "${id}" should fail validation`);
+        }
     });
 });

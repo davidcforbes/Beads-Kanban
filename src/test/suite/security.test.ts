@@ -102,6 +102,105 @@ suite('Security Tests', () => {
         });
     });
 
+    suite('validateIssueId() - Issue ID Format Validation', () => {
+        let adapter: DaemonBeadsAdapter;
+        let output: vscode.OutputChannel;
+        let sandbox: sinon.SinonSandbox;
+
+        setup(() => {
+            sandbox = sinon.createSandbox();
+            output = {
+                appendLine: sandbox.stub(),
+                show: sandbox.stub(),
+                dispose: sandbox.stub()
+            } as any;
+            adapter = new DaemonBeadsAdapter('/fake/workspace', output);
+        });
+
+        teardown(() => {
+            adapter.dispose();
+            sandbox.restore();
+        });
+
+        test('Accepts default beads- prefix IDs', () => {
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('beads-abc'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('beads-def'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('beads-kanban-3ae'));
+        });
+
+        test('Accepts custom prefix IDs (e.g., smth-)', () => {
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('smth-abc'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('smth-def'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('smth-kanban-3ae'));
+        });
+
+        test('Accepts project-scoped IDs with custom prefixes', () => {
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('myproject.smth-abc'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('project.beads-abc'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('my-org.beads-xyz'));
+        });
+
+        test('Accepts IDs with dots and hyphens in suffix', () => {
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('beads-hct.2'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('smth-foo-bar'));
+            assert.doesNotThrow(() => (adapter as any).validateIssueId('smth-a.b'));
+        });
+
+        test('Rejects IDs starting with hyphen (flag injection)', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId('-beads-abc'),
+                /cannot start with hyphen/
+            );
+        });
+
+        test('Rejects IDs with whitespace', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId('beads abc'),
+                /whitespace not allowed/
+            );
+            assert.throws(
+                () => (adapter as any).validateIssueId('smth-abc\n'),
+                /whitespace not allowed/
+            );
+        });
+
+        test('Rejects IDs with shell metacharacters', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId('smth-abc;rm'),
+                /Invalid issue ID/
+            );
+            assert.throws(
+                () => (adapter as any).validateIssueId('smth-abc|cat'),
+                /Invalid issue ID/
+            );
+        });
+
+        test('Rejects IDs without a hyphen separator', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId('smthabc'),
+                /Invalid issue ID format/
+            );
+        });
+
+        test('Rejects empty string', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId(''),
+                /Issue ID must be a non-empty string/
+            );
+        });
+
+        test('Rejects IDs with consecutive special characters', () => {
+            assert.throws(
+                () => (adapter as any).validateIssueId('smth--abc'),
+                /Invalid issue ID format/
+            );
+            assert.throws(
+                () => (adapter as any).validateIssueId('smth..abc'),
+                /Invalid issue ID format/
+            );
+        });
+    });
+
     suite('Zod Schema Validation - Input Validation', () => {
         test('IssueCreateSchema: Rejects title exceeding max length', () => {
             const input = {
