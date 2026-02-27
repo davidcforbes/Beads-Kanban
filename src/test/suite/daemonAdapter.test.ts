@@ -7,6 +7,14 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
     let output: vscode.OutputChannel;
     let workspaceRoot: string;
 
+    /** Skip test when bd CLI is unavailable or daemon is not running */
+    function skipIfNoBd(err: unknown, ctx: Mocha.Context): void {
+        if (err instanceof Error &&
+            (err.message.includes('daemon is not running') || err.message.includes('ENOENT'))) {
+            ctx.skip();
+        }
+    }
+
     setup(() => {
         output = vscode.window.createOutputChannel('Test');
         const ws = vscode.workspace.workspaceFolders?.[0];
@@ -17,9 +25,9 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
         adapter = new DaemonBeadsAdapter(workspaceRoot, output);
     });
 
-    teardown(() => {
-        adapter.dispose();
-        output.dispose();
+    teardown(function() {
+        try { adapter.dispose(); } catch { /* ignore */ }
+        try { output.dispose(); } catch { /* ignore */ }
     });
 
     test('Daemon connection check', async function() {
@@ -29,9 +37,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
             await adapter.ensureConnected();
             assert.ok(true, 'Should connect to daemon without errors');
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip(); // Skip if daemon is not running
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
@@ -62,9 +68,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
                 assert.ok(card.status, 'Card should have status');
             }
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip();
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
@@ -87,9 +91,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
             // Clean up - close the test issue
             await adapter.setIssueStatus(result.id, 'closed');
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip();
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
@@ -127,9 +129,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
                 assert.strictEqual((card as any).comments, undefined, 'MinimalCard should not have comments');
             }
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip();
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
@@ -181,9 +181,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
             // Clean up - close the test issue
             await adapter.setIssueStatus(createResult.id, 'closed');
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip();
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
@@ -198,9 +196,7 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
                 'Should reject with Issue not found error'
             );
         } catch (err) {
-            if (err instanceof Error && err.message.includes('daemon is not running')) {
-                this.skip();
-            }
+            skipIfNoBd(err, this);
             throw err;
         }
     });
