@@ -130,7 +130,8 @@
     "test:validation": "node scripts/test-message-validation.js",
     "test:field-mapping": "node scripts/test-field-mapping.js",
     "test:round-trip": "node scripts/test-round-trip.js",
-    "test:all": "node scripts/test-all.js"
+    "test:all": "node scripts/test-all.js",
+    "test:visual-harness": "node scripts/visual-test-harness.js"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
