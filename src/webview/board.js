@@ -2792,7 +2792,7 @@ function populateStaticEditForm(form, card, isCreateMode) {
             html += `<span>Created: ${new Date(card.created_at).toLocaleString()}</span>`;
             html += `<span>Updated: ${new Date(card.updated_at).toLocaleString()}</span>`;
             if (card.closed_at) html += `<span>Closed: ${new Date(card.closed_at).toLocaleString()}</span>`;
-            footer.innerHTML = html;
+            footer.innerHTML = DOMPurify.sanitize(html, purifyConfig);
         }
     }
     
@@ -2840,7 +2840,7 @@ function refreshStaticFormRelationships(form, card) {
     
     if (parentDisplay) {
         if (card.parent) {
-            parentDisplay.innerHTML = formatStaticFormDep(card.parent);
+            parentDisplay.innerHTML = DOMPurify.sanitize(formatStaticFormDep(card.parent), purifyConfig);
             parentDisplay.classList.remove('none');
             if (removeParentBtn) removeParentBtn.classList.remove('hidden');
             if (parentAddRow) parentAddRow.classList.add('hidden');
@@ -2935,7 +2935,7 @@ function refreshStaticFormAdvancedMetadata(form, card) {
         }
     }
     if (card.payload) html += `<span class="meta-label">Payload:</span><pre>${escapeHtml(card.payload)}</pre>`;
-    content.innerHTML = html;
+    content.innerHTML = DOMPurify.sanitize(html, purifyConfig);
 }
 
 function refreshStaticFormIssueDatalist(form, card) {

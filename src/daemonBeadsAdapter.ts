@@ -1744,7 +1744,7 @@ export class DaemonBeadsAdapter {
 
       // Use '--' separator before user-controlled text to prevent flag injection
       // bd comments add expects text as positional argument, not --text flag
-      await this.execBd(['comments', 'add', issueId, '--', text, '--author', author]);
+      await this.execBd(['comments', 'add', issueId, '--author', author, '--', text]);
 
       // Track mutation and invalidate cache
       this.trackMutation();
