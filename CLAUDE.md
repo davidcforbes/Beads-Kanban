@@ -618,8 +618,8 @@ git push origin v2.0.X
 
 | File | What to Change | Example |
 |------|---------------|---------|
-| `package.json` | `"version": "X.Y.Z"` | `"version": "2.0.6"` |
-| `src/webview.ts` | `const version = "X.Y.Z"` (line 6) | `const version = "2.0.6"` |
+| `package.json` | `"version": "X.Y.Z"` | `"version": "2.1.2"` |
+| `src/webview.ts` | `const version = "X.Y.Z"` (line 6) | `const version = "2.1.2"` |
 | `CHANGELOG.md` | Add new version entry at top | See format above |
 
 **Common Issues:**
@@ -761,3 +761,6 @@ To debug, keep source maps in the VSIX by removing `**/*.map` from `.vscodeignor
 - Markdown preview uses marked.js with GFM and DOMPurify sanitization.
 - **Webview cache-busting:** The version in `src/webview.ts` must match `package.json` version for proper cache invalidation.
 - **Windows packaging:** Always use PowerShell, not Git Bash, for `vsce package` command.
+- **Current version:** 2.1.2 (published to VS Code Marketplace 2026-03-28)
+- **Visual testing:** Run `npm run test:visual-server` to launch the standalone visual test server with mock data in Chrome. Use Chrome DevTools MCP to automate visual validation. Note: Chrome DevTools MCP does NOT work with VS Code's Electron webviews (Puppeteer's `Target.getDevToolsTarget` is unsupported in Electron). The standalone server renders the same webview code in regular Chrome where MCP works.
+- **Test data seeding:** Run `bash scripts/seed-test-data.sh` to populate a .beads database with 53 representative issues for testing. Clean with `bash scripts/clean-test-data.sh`.
