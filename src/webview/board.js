@@ -372,6 +372,8 @@ let columnState = {
 let boardData = null;
 let readOnly = false; // Read-only mode flag from extension
 let detailDirty = false;
+let openDetailGeneration = 0;
+function markDetailDirty() { detailDirty = true; }
 
 // Phase 2: Client-side card cache for fast filtering/sorting
 // Maps card ID to card data (MinimalCard, EnrichedCard, or FullCard)
@@ -409,19 +411,22 @@ function debounce(func, wait) {
 }
 
 function requestDetailClose() {
-    if (!detailDirty) {
+    const editFormDirty = window.__editFormDirty?.isDirty?.() || false;
+    if (!detailDirty && !editFormDirty) {
         detDialog.close();
         return;
     }
     const shouldClose = confirm("Discard unsaved changes?");
     if (shouldClose) {
         detailDirty = false;
+        if (window.__editFormDirty?.reset) { window.__editFormDirty.reset(); }
         detDialog.close();
     }
 }
 
 detDialog.addEventListener("cancel", (event) => {
-    if (!detailDirty) {
+    const editFormDirty = window.__editFormDirty?.isDirty?.() || false;
+    if (!detailDirty && !editFormDirty) {
         return;
     }
     event.preventDefault();
@@ -2954,6 +2959,7 @@ function refreshStaticFormIssueDatalist(form, card) {
 }
 
 async function openDetail(card) {
+    const thisGeneration = ++openDetailGeneration;
     console.log('[DEBUG] openDetail called with card:', card ? { id: card.id, title: card.title } : null);
     console.log('[DEBUG] Stack trace:', new Error().stack);
 
@@ -2973,6 +2979,7 @@ async function openDetail(card) {
         try {
             // Load full details from server or cache
             const fullCard = await loadFullIssue(card.id);
+            if (thisGeneration !== openDetailGeneration) { return; } // stale call, abort
             // Use full card data for the rest of the function
             card = fullCard;
         } catch (error) {
@@ -3287,7 +3294,6 @@ async function openDetail(card) {
     populateStaticEditForm(form, card, isCreateMode);
 
     detailDirty = false;
-    const markDirty = () => { detailDirty = true; };
     const dirtyFieldIds = [
         "editTitle",
         "editStatus",
@@ -3309,8 +3315,10 @@ async function openDetail(card) {
     dirtyFieldIds.forEach((id) => {
         const field = form.querySelector(`#${id}`);
         if (!field) return;
-        field.addEventListener("input", markDirty);
-        field.addEventListener("change", markDirty);
+        field.removeEventListener("input", markDetailDirty);
+        field.removeEventListener("change", markDetailDirty);
+        field.addEventListener("input", markDetailDirty);
+        field.addEventListener("change", markDetailDirty);
     });
 
     // Bind events
@@ -3319,27 +3327,31 @@ async function openDetail(card) {
         requestDetailClose();
     };
 
-    form.querySelector("#btnSave").onclick = async (e) => {
+    const btnSave = form.querySelector("#btnSave");
+    btnSave.onclick = async (e) => {
         e.preventDefault();
+        if (btnSave.disabled) { return; }
+        btnSave.disabled = true;
+        try {
         const data = {
-            title: document.getElementById("editTitle").value.trim(),
-            status: document.getElementById("editStatus").value,
-            issue_type: document.getElementById("editType").value,
-            priority: parseInt(document.getElementById("editPriority").value),
-            assignee: document.getElementById("editAssignee").value.trim() || null,
-            estimated_minutes: document.getElementById("editEst").value ? parseInt(document.getElementById("editEst").value) : null,
-            external_ref: document.getElementById("editExtRef").value.trim() || null,
-            due_at: toIsoFromLocalInput(document.getElementById("editDueAt").value),
-            defer_until: toIsoFromLocalInput(document.getElementById("editDeferUntil").value),
-            description: document.getElementById("editDesc").value,
-            acceptance_criteria: document.getElementById("editAC").value,
-            design: document.getElementById("editDesign").value,
-            notes: document.getElementById("editNotes").value,
-            pinned: document.getElementById("editPinned").checked,
-            is_template: document.getElementById("editTemplate").checked,
-            ephemeral: document.getElementById("editEphemeral").checked
+            title: form.querySelector("#editTitle").value.trim(),
+            status: form.querySelector("#editStatus").value,
+            issue_type: form.querySelector("#editType").value,
+            priority: parseInt(form.querySelector("#editPriority").value),
+            assignee: form.querySelector("#editAssignee").value.trim() || null,
+            estimated_minutes: form.querySelector("#editEst").value ? parseInt(form.querySelector("#editEst").value) : null,
+            external_ref: form.querySelector("#editExtRef").value.trim() || null,
+            due_at: toIsoFromLocalInput(form.querySelector("#editDueAt").value),
+            defer_until: toIsoFromLocalInput(form.querySelector("#editDeferUntil").value),
+            description: form.querySelector("#editDesc").value,
+            acceptance_criteria: form.querySelector("#editAC").value,
+            design: form.querySelector("#editDesign").value,
+            notes: form.querySelector("#editNotes").value,
+            pinned: form.querySelector("#editPinned").checked,
+            is_template: form.querySelector("#editTemplate").checked,
+            ephemeral: form.querySelector("#editEphemeral").checked
         };
-        
+
         // In create mode, include labels, parent, blockers, and children
         if (isCreateMode) {
             if (card.labels && card.labels.length > 0) {
@@ -3362,7 +3374,7 @@ async function openDetail(card) {
                     // Create new issue
                     const createResponse = await postAsync("issue.create", data, "Creating issue...");
                     const newIssueId = createResponse?.payload?.id;
-                    
+
                     // Post any comments that were added in create mode
                     let failedComments = 0;
                     if (newIssueId && card.comments && card.comments.length > 0) {
@@ -3401,6 +3413,9 @@ async function openDetail(card) {
             }
         } else {
             toast("Title is required");
+        }
+        } finally {
+            btnSave.disabled = false;
         }
     };
 

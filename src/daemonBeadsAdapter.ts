@@ -11,6 +11,7 @@ import {
   Comment,
   ISSUE_ID_PATTERN
 } from './types';
+import { sanitizeError } from './sanitizeError';
 
 /**
  * BeadsAdapter implementation that uses the bd CLI daemon instead of sql.js
@@ -362,7 +363,8 @@ export class DaemonBeadsAdapter {
           } else {
             this.output.appendLine(`[DaemonBeadsAdapter] Command context: ${command} (cwd: ${this.workspaceRoot})`);
             this.output.appendLine(`[DaemonBeadsAdapter] Command failed (exit ${code}): ${stderr || stdout}`);
-            reject(new Error(`bd command failed with exit code ${code}: ${stderr || stdout}`));
+            const sanitizedOutput = sanitizeError(stderr || stdout);
+            reject(new Error(`bd command failed with exit code ${code}: ${sanitizedOutput}`));
           }
         }
       });
@@ -1843,7 +1845,18 @@ export class DaemonBeadsAdapter {
    * @param newWorkspaceRoot New workspace root path
    */
   public setWorkspaceRoot(newWorkspaceRoot: string): void {
+    if (!newWorkspaceRoot || typeof newWorkspaceRoot !== 'string') {
+      throw new Error('Invalid workspace root: must be a non-empty string');
+    }
+    if (newWorkspaceRoot.includes('..')) {
+      throw new Error('Invalid workspace root: path traversal sequences not allowed');
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\0-\x1F\x7F]/.test(newWorkspaceRoot)) {
+      throw new Error('Invalid workspace root: path contains control characters');
+    }
     this.workspaceRoot = newWorkspaceRoot;
+    this.columnDataCache.clear();
     this.output.appendLine(`[DaemonBeadsAdapter] Workspace root changed to: ${newWorkspaceRoot}`);
     // Reset circuit breaker state for new repository
     this.circuitBreakerState = 'CLOSED';

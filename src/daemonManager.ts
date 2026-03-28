@@ -9,25 +9,51 @@ import * as fs from 'fs';
  * @param cwd Working directory
  * @returns Promise resolving to stdout
  */
-function spawnAsync(command: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+function spawnAsync(command: string, args: string[], cwd: string, timeoutMs: number = 30000): Promise<{ stdout: string; stderr: string }> {
+  const MAX_BUFFER = 10 * 1024 * 1024; // 10 MB
+
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, shell: false });
     let stdout = '';
     let stderr = '';
+    let killed = false;
+
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill('SIGTERM');
+      reject(new Error(`Command timed out after ${timeoutMs}ms: ${command} ${args.join(' ')}`));
+    }, timeoutMs);
 
     child.stdout.on('data', (data) => {
       stdout += data.toString();
+      if (stdout.length > MAX_BUFFER) {
+        killed = true;
+        child.kill('SIGTERM');
+        clearTimeout(timer);
+        reject(new Error(`stdout exceeded ${MAX_BUFFER} bytes buffer limit`));
+      }
     });
 
     child.stderr.on('data', (data) => {
       stderr += data.toString();
+      if (stderr.length > MAX_BUFFER) {
+        killed = true;
+        child.kill('SIGTERM');
+        clearTimeout(timer);
+        reject(new Error(`stderr exceeded ${MAX_BUFFER} bytes buffer limit`));
+      }
     });
 
     child.on('error', (error) => {
+      clearTimeout(timer);
       reject(error);
     });
 
     child.on('close', (code) => {
+      clearTimeout(timer);
+      if (killed) {
+        return;
+      }
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {

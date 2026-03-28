@@ -8,6 +8,12 @@ let isCreateMode = false;
 let detailDirty = false;
 let formInitialized = false;
 
+// Expose dirty state to board.js for unified close-guard checks
+window.__editFormDirty = {
+    isDirty: () => detailDirty,
+    reset: () => { detailDirty = false; }
+};
+
 // DOM element references (cached once)
 let form = null;
 let detDialog = null;
@@ -850,9 +856,13 @@ function resetMarkdownPreviews() {
 // Save handler
 async function handleSave(e) {
     e.preventDefault();
-    
+
+    const btnSave = form.querySelector('#btnSave');
+    if (btnSave && btnSave.disabled) { return; }
+    if (btnSave) { btnSave.disabled = true; }
+    try {
     const { toast, postAsync } = window._editForm;
-    
+
     const data = {
         title: form.querySelector('#editTitle').value.trim(),
         status: form.querySelector('#editStatus').value,
@@ -871,7 +881,7 @@ async function handleSave(e) {
         is_template: form.querySelector('#editTemplate').checked,
         ephemeral: form.querySelector('#editEphemeral').checked
     };
-    
+
     // In create mode, include relationships
     if (isCreateMode) {
         if (currentCard.labels && currentCard.labels.length > 0) {
@@ -887,17 +897,17 @@ async function handleSave(e) {
             data.children_ids = currentCard.children.map(c => c.id);
         }
     }
-    
+
     if (!data.title) {
         toast("Title is required");
         return;
     }
-    
+
     try {
         if (isCreateMode) {
             const createResponse = await postAsync("issue.create", data, "Creating issue...");
             const newIssueId = createResponse?.payload?.id;
-            
+
             // Post any comments
             let failedComments = 0;
             if (newIssueId && currentCard.comments && currentCard.comments.length > 0) {
@@ -914,7 +924,7 @@ async function handleSave(e) {
                     }
                 }
             }
-            
+
             if (failedComments > 0) {
                 toast(`Issue created, but ${failedComments} comment(s) failed to post`);
             } else {
@@ -924,11 +934,14 @@ async function handleSave(e) {
             await postAsync("issue.update", { id: currentCard.id, updates: data }, "Saving changes...");
             toast("Changes saved successfully");
         }
-        
+
         detailDirty = false;
         detDialog.close();
     } catch (err) {
         toast(`Failed to ${isCreateMode ? 'create issue' : 'save changes'}: ${err.message}`);
+    }
+    } finally {
+        if (btnSave) { btnSave.disabled = false; }
     }
 }
 

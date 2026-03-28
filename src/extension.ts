@@ -19,6 +19,7 @@ import {
   SetStatusSchema,
   BoardLoadColumnSchema,
   BoardLoadMoreSchema,
+  TableLoadPageSchema,
   ColumnDataMap,
   ColumnData,
   IssueIdSchema
@@ -812,7 +813,12 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (msg.type === "table.loadPage") {
-        const { filters, sorting, offset, limit } = msg.payload;
+        const validation = TableLoadPageSchema.safeParse(msg.payload);
+        if (!validation.success) {
+          panel.webview.postMessage({ type: 'mutation.error', payload: { message: 'Invalid table load parameters' } });
+          return;
+        }
+        const { filters = {}, sorting = [], offset = 0, limit = 100 } = validation.data;
         await handleTableLoadPage(msg.requestId, filters, sorting, offset, limit);
         return;
       }

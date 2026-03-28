@@ -277,9 +277,9 @@ export const IssueCreateSchema = z.object({
   pinned: z.boolean().optional(),
   is_template: z.boolean().optional(),
   ephemeral: z.boolean().optional(),
-  parent_id: z.string().max(100).optional(),
-  blocked_by_ids: z.array(z.string().max(100)).optional(),
-  children_ids: z.array(z.string().max(100)).optional()
+  parent_id: IssueIdSchema.optional(),
+  blocked_by_ids: z.array(IssueIdSchema).optional(),
+  children_ids: z.array(IssueIdSchema).optional()
 });
 
 export const SetStatusSchema = z.object({
@@ -313,6 +313,20 @@ export const BoardLoadColumnSchema = z.object({
 
 export const BoardLoadMoreSchema = z.object({
   column: BoardColumnKeySchema
+});
+
+export const TableLoadPageSchema = z.object({
+  filters: z.object({
+    search: z.string().max(200).optional(),
+    priority: z.string().max(10).optional(),
+    type: z.string().max(50).optional(),
+    status: z.string().max(50).optional(),
+    assignee: z.string().max(100).optional(),
+    labels: z.array(z.string().max(100)).max(20).optional()
+  }).optional(),
+  sorting: z.array(z.object({ id: z.string().max(50), dir: z.enum(['asc', 'desc']) })).max(5).optional(),
+  offset: z.number().int().min(0).max(100000).optional(),
+  limit: z.number().int().min(1).max(500).optional()
 });
 
 // Graph View Types

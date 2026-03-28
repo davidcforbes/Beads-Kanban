@@ -233,7 +233,7 @@ suite('Security Tests', () => {
                 const result = IssueCreateSchema.safeParse(input);
                 // Zod doesn't block SQL injection (that's handled by parameterized queries)
                 // But it should still validate the input
-                assert.ok(result.success || !result.success, 'Schema should process SQL-like strings');
+                assert.ok(result.success, 'Schema should accept SQL-like strings in title (SQL injection is not a Zod concern)');
             }
         });
 
@@ -252,7 +252,7 @@ suite('Security Tests', () => {
                 };
                 const result = IssueCreateSchema.safeParse(input);
                 // Zod allows HTML (sanitization happens in webview with DOMPurify)
-                assert.ok(result.success || !result.success, 'Schema should process HTML-like strings');
+                assert.ok(result.success, 'Schema should accept HTML-like strings in description (XSS prevention is handled by DOMPurify, not Zod)');
             }
         });
 
@@ -328,7 +328,7 @@ suite('Security Tests', () => {
 
         test('IssueUpdateSchema: Validates nested updates object', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 updates: {
                     title: 'a'.repeat(501) // Exceeds max
                 }
@@ -339,7 +339,7 @@ suite('Security Tests', () => {
 
         test('CommentAddSchema: Rejects empty comment text', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 text: '',
                 author: 'test'
             };
@@ -349,7 +349,7 @@ suite('Security Tests', () => {
 
         test('CommentAddSchema: Rejects comment text exceeding max length', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 text: 'a'.repeat(10001), // 10001 chars, max is 10000
                 author: 'test'
             };
@@ -359,7 +359,7 @@ suite('Security Tests', () => {
 
         test('CommentAddSchema: Rejects author exceeding max length', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 text: 'test comment',
                 author: 'a'.repeat(101) // 101 chars, max is 100
             };
@@ -369,7 +369,7 @@ suite('Security Tests', () => {
 
         test('LabelSchema: Rejects empty label', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 label: ''
             };
             const result = LabelSchema.safeParse(input);
@@ -378,7 +378,7 @@ suite('Security Tests', () => {
 
         test('LabelSchema: Rejects label exceeding max length', () => {
             const input = {
-                issueId: 'test-id',
+                id: 'beads-kanban-1',
                 label: 'a'.repeat(101) // 101 chars, max is 100
             };
             const result = LabelSchema.safeParse(input);
@@ -387,8 +387,8 @@ suite('Security Tests', () => {
 
         test('DependencySchema: Rejects invalid dependency type', () => {
             const input = {
-                issueId: 'test-id',
-                dependsOnId: 'other-id',
+                id: 'beads-kanban-1',
+                otherId: 'beads-kanban-2',
                 type: 'invalid-type'
             };
             const result = DependencySchema.safeParse(input);
@@ -461,7 +461,7 @@ suite('Security Tests', () => {
                 const input = { title: str };
                 const result = IssueCreateSchema.safeParse(input);
                 // Should accept valid Unicode (sanitization happens elsewhere)
-                assert.ok(result.success !== undefined, 'Should process Unicode strings');
+                assert.ok(result.success, 'Schema should accept Unicode strings');
             }
         });
 

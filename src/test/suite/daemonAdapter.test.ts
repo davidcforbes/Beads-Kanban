@@ -188,17 +188,19 @@ suite('DaemonBeadsAdapter Integration Tests', () => {
 
     test('Get full issue for non-existent ID should fail', async function() {
         this.timeout(10000);
-
+        let threw = false;
         try {
             await adapter.getIssueFull('beads-non-existent-12345');
-            assert.fail('Should have thrown an error');
         } catch (err) {
             skipIfNoBd(err, this);
-            // If we didn't skip, bd is available — verify the expected error
+            threw = true;
             assert.ok(
                 err instanceof Error && /Issue not found/.test(err.message),
                 'Should reject with Issue not found error'
             );
+        }
+        if (!threw) {
+            assert.fail('getIssueFull should have thrown for non-existent ID');
         }
     });
 });
