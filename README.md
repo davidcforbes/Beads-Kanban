@@ -116,6 +116,8 @@ Beads is an AI-native issue tracking system that lives directly in your codebase
 
 | Setting | Default | Description |
 | --------- | --------- | ------------- |
+| `beadsKanban.bdPath` | `""` | Absolute path to `bd` CLI. Leave empty to use system PATH. |
+| `beadsKanban.doltPath` | `""` | Absolute path to `dolt`. Leave empty to use system PATH. |
 | `beadsKanban.readOnly` | `false` | Enable read-only mode (no edits) |
 | `beadsKanban.initialLoadLimit` | `100` | Issues per column on initial load |
 | `beadsKanban.pageSize` | `50` | Issues to load when clicking "Load More" |
@@ -178,9 +180,28 @@ The extension uses a clean architecture with three main layers:
 
 - **Extension Host** (`src/extension.ts`): Command registration, webview lifecycle, message routing
 - **Data Adapter** (`src/daemonBeadsAdapter.ts`): CLI-based daemon adapter for all database operations
-- **Webview UI** (`media/board.js`, `media/styles.css`): Reactive UI with incremental loading
+- **Webview UI** (`src/webview/board.js`, `src/webview/editForm.js`, `media/styles.css`): Reactive UI with incremental loading
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.
+
+## Visual Testing
+
+The extension includes a standalone visual test server for automated UI testing with Chrome DevTools MCP:
+
+```bash
+# Launch the test server (opens Chrome with the board rendered using mock data)
+npm run test:visual-server
+
+# Light theme variant
+npm run test:visual-server -- --theme=light
+
+# Server only (no Chrome auto-launch)
+npm run test:visual-server -- --no-chrome
+```
+
+The server renders the exact same webview HTML/CSS/JS as the VS Code extension, with a mock VS Code API that responds to all message types. Chrome DevTools MCP agents can then automate visual validation across all views (Kanban, Table, Graph, dialogs).
+
+See `scripts/seed-test-data.sh` for creating representative test data in a real `.beads` database.
 
 ## Contributing
 

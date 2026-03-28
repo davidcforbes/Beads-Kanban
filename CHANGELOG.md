@@ -5,6 +5,38 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-03-28
+
+### Security
+
+- **Fix 3 XSS vulnerabilities**: Added DOMPurify.sanitize() to parentDisplay, advanced metadata, and footer innerHTML assignments in both board.js and editForm.js
+- **Fix CLI injection**: Moved --author flag before -- separator in addComment to prevent flag bypass
+- **Add Zod validation for table.loadPage**: Previously the only unvalidated message handler; now enforces bounds on sorting, offset, limit, and filter fields
+- **Apply IssueIdSchema to dependency fields**: parent_id, blocked_by_ids, children_ids in IssueCreateSchema now use IssueIdSchema instead of z.string().max(100)
+- **Sanitize stderr in error messages**: Raw CLI stderr no longer leaks internal paths to the webview
+- **Add path validation to setWorkspaceRoot**: Prevents path traversal and control character injection
+
+### Added
+
+- **Configurable CLI paths** (GitHub issue #6): New `beadsKanban.bdPath` and `beadsKanban.doltPath` settings allow specifying absolute paths to the bd and dolt executables for portable setups
+- **Visual UI testing framework**: Standalone test server (`scripts/visual-test-server.js`) serves the webview in Chrome for automated visual testing with Chrome DevTools MCP
+- **Test data seeder**: `scripts/seed-test-data.sh` creates 53 representative issues covering all visual scenarios
+- **Security Rules in CLAUDE.md**: 9 mandatory development guidelines codifying lessons from the security review
+- **CI improvements**: Added `npm run lint` step and VSIX artifact verification to GitHub Actions workflow
+
+### Fixed
+
+- **Issue ID validation** (GitHub issue #5, PR #4): IDs with custom prefixes and hierarchical dot-separated suffixes (e.g. `stuff-30m.1.4.9`) are now accepted via shared `ISSUE_ID_PATTERN` constant
+- **DaemonManager.spawnAsync timeout**: Added 30-second timeout and 10MB buffer limit matching DaemonBeadsAdapter.execBd safeguards
+- **Event listener accumulation**: openDetail no longer stacks markDirty listeners on each call
+- **Split-brain detailDirty state**: board.js and editForm.js now share dirty state via window.__editFormDirty
+- **Save button double-submit**: Disabled during in-flight postAsync to prevent duplicate issues
+- **Concurrent openDetail race**: Generation counter aborts stale dialog population
+- **DOM clobbering risk**: btnSave reads scoped to form.querySelector instead of document.getElementById
+- **Test correctness**: Fixed tautological assertions in security tests, wrong field names in schema tests, assert.fail caught by own catch block in daemonAdapter tests
+- **Mocha UI mode**: Test runner correctly uses tdd mode matching suite()/test() syntax (PR #4)
+- **Node.js version**: Dropped Node 18 (EOL), added Node 22, enforced >=20 (PR #4)
+
 ## [2.0.6] - 2026-01-20
 
 ### ✨ New Features
