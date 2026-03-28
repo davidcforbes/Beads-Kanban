@@ -131,7 +131,8 @@
     "test:field-mapping": "node scripts/test-field-mapping.js",
     "test:round-trip": "node scripts/test-round-trip.js",
     "test:all": "node scripts/test-all.js",
-    "test:visual-harness": "node scripts/visual-test-harness.js"
+    "test:visual-harness": "node scripts/visual-test-harness.js",
+    "test:visual-server": "node scripts/visual-test-server.js"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
