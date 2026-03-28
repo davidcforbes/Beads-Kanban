@@ -56,9 +56,10 @@ export interface DaemonInfo {
 
 export class DaemonManager {
   private workspaceRoot: string;
+  private bdCommand: string;
   private logger?: { appendLine: (value: string) => void };
 
-  constructor(workspaceRoot: string, logger?: { appendLine: (value: string) => void }) {
+  constructor(workspaceRoot: string, logger?: { appendLine: (value: string) => void }, bdPath?: string) {
     // Validate and normalize workspace path to prevent command injection
     if (!workspaceRoot || typeof workspaceRoot !== 'string') {
       throw new Error('Invalid workspace root: must be a non-empty string');
@@ -97,12 +98,13 @@ export class DaemonManager {
     }
 
     this.workspaceRoot = normalized;
+    this.bdCommand = bdPath || 'bd';
     this.logger = logger;
   }
 
   private logSpawnError(args: string[], error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
-    const command = `bd ${args.join(' ')}`;
+    const command = `${this.bdCommand} ${args.join(' ')}`;
     const logLine = `[DaemonManager] ${command} failed: ${message}`;
 
     if (this.logger) {
@@ -120,7 +122,7 @@ export class DaemonManager {
    */
   async getStatus(): Promise<DaemonStatus> {
     try {
-      const { stdout } = await spawnAsync('bd', ['info', '--json'], this.workspaceRoot);
+      const { stdout } = await spawnAsync(this.bdCommand, ['info', '--json'], this.workspaceRoot);
       if (!stdout.trim()) {
         return { running: false, healthy: false };
       }
@@ -150,7 +152,7 @@ export class DaemonManager {
    */
   async listAllDaemons(): Promise<DaemonInfo[]> {
     try {
-      const { stdout } = await spawnAsync('bd', ['daemon', 'list', '--json'], this.workspaceRoot);
+      const { stdout } = await spawnAsync(this.bdCommand, ['daemon', 'list', '--json'], this.workspaceRoot);
 
       if (!stdout.trim()) {
         return [];
@@ -177,7 +179,7 @@ export class DaemonManager {
    */
   async checkHealth(): Promise<{ healthy: boolean; issues: string[] }> {
     try {
-      const { stdout } = await spawnAsync('bd', ['daemon', 'health', '--json'], this.workspaceRoot);
+      const { stdout } = await spawnAsync(this.bdCommand, ['daemon', 'health', '--json'], this.workspaceRoot);
 
       if (!stdout.trim()) {
         return { healthy: true, issues: [] };
@@ -217,7 +219,7 @@ export class DaemonManager {
    */
   async start(): Promise<void> {
     try {
-      await spawnAsync('bd', ['daemon', 'start'], this.workspaceRoot);
+      await spawnAsync(this.bdCommand, ['daemon', 'start'], this.workspaceRoot);
     } catch (error) {
       this.logSpawnError(['daemon', 'start'], error);
       throw error;
@@ -226,7 +228,7 @@ export class DaemonManager {
 
   async restart(): Promise<void> {
     try {
-      await spawnAsync('bd', ['daemon', 'restart', this.workspaceRoot], this.workspaceRoot);
+      await spawnAsync(this.bdCommand, ['daemon', 'restart', this.workspaceRoot], this.workspaceRoot);
     } catch (error) {
       this.logSpawnError(['daemon', 'restart', this.workspaceRoot], error);
       throw error;
@@ -238,7 +240,7 @@ export class DaemonManager {
    */
   async stop(): Promise<void> {
     try {
-      await spawnAsync('bd', ['daemon', 'stop', this.workspaceRoot], this.workspaceRoot);
+      await spawnAsync(this.bdCommand, ['daemon', 'stop', this.workspaceRoot], this.workspaceRoot);
     } catch (error) {
       this.logSpawnError(['daemon', 'stop', this.workspaceRoot], error);
       throw error;
@@ -252,7 +254,7 @@ export class DaemonManager {
     try {
       // Validate lines parameter
       const safeLines = Math.max(1, Math.min(1000, Math.floor(lines)));
-      const { stdout } = await spawnAsync('bd', ['daemon', 'logs', this.workspaceRoot, '-n', String(safeLines)], this.workspaceRoot);
+      const { stdout } = await spawnAsync(this.bdCommand, ['daemon', 'logs', this.workspaceRoot, '-n', String(safeLines)], this.workspaceRoot);
       return stdout;
     } catch (error) {
       this.logSpawnError(['daemon', 'logs', this.workspaceRoot, '-n', String(lines)], error);

@@ -51,6 +51,18 @@
     "configuration": {
       "title": "Agent Native Abstraction Layer for Beads",
       "properties": {
+        "beadsKanban.bdPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the bd CLI executable. Leave empty to use bd from system PATH. Useful for portable setups or when bd is not on the system PATH.",
+          "scope": "resource"
+        },
+        "beadsKanban.doltPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the dolt executable. Leave empty to use dolt from system PATH. Useful for portable setups or when dolt is not on the system PATH.",
+          "scope": "resource"
+        },
         "beadsKanban.readOnly": {
           "type": "boolean",
           "default": false,

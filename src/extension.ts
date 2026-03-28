@@ -169,7 +169,9 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (!daemonManager || daemonWorkspaceRoot !== ws.uri.fsPath) {
-      daemonManager = new DaemonManager(ws.uri.fsPath, output);
+      const config = vscode.workspace.getConfiguration('beadsKanban');
+      const bdPath = config.get<string>('bdPath', '') || undefined;
+      daemonManager = new DaemonManager(ws.uri.fsPath, output, bdPath);
       daemonWorkspaceRoot = ws.uri.fsPath;
       autoStartAttempted = false;
     }

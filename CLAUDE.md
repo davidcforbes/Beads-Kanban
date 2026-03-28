@@ -111,7 +111,13 @@ When replacing `any` types with `unknown` for ESLint compliance:
 - `npm run test:coverage` - Run tests with c8 coverage
 - Press F5 with "Extension Tests" launch config to debug tests
 
-Running specific tests: The test runner uses Mocha. To run a specific test file or filter by test name, modify `src/test/suite/index.ts` temporarily to use Mocha's `grep` option or change the glob pattern. Test files are in `src/test/suite/*.test.ts`.
+Running specific tests: The test runner uses Mocha with `tdd` UI mode (use `suite()` / `test()`, not `describe()` / `it()`). To run a specific test file or filter by test name, modify `src/test/suite/index.ts` temporarily to use Mocha's `grep` option or change the glob pattern. Test files are in `src/test/suite/*.test.ts`.
+
+**Test quality checklist (apply when writing or reviewing tests):**
+- Assertions must test the specific constraint, not pass tautologically
+- Test input field names must match the Zod schema field names (`id` not `issueId`)
+- When testing "rejects X", confirm the rejection is for the right reason
+- Integration tests that depend on `bd` CLI must use `skipIfNoBd` guard for CI
 
 ### Running the Extension
 
@@ -203,11 +209,15 @@ The extension uses the DaemonBeadsAdapter exclusively for all database operation
 
 ### Input Validation
 
-All mutation messages from the webview are validated with Zod (`src/types.ts`):
+All mutation messages from the webview MUST be validated with Zod (`src/types.ts`) before use:
 
 - `IssueCreateSchema` / `IssueUpdateSchema`
 - `CommentAddSchema` / `LabelSchema` / `DependencySchema`
-- `IssueIdSchema` enforces length bounds; issue IDs are treated as opaque strings, not necessarily UUIDs
+- `IssueIdSchema` / `ISSUE_ID_PATTERN` - shared regex for issue ID validation (supports custom prefixes and hierarchical dot-separated IDs like `stuff-30m.1.4.9`)
+- `BoardLoadColumnSchema` - bounds for incremental loading
+- **New handlers** must add their own Zod schema — see Security Rules section
+
+Issue IDs are opaque strings, not necessarily UUIDs. The `bd init` command allows custom project prefixes (e.g., `stuff-`, `proj-`), so validation must not hardcode `beads-`.
 
 ### Incremental Loading Architecture
 
@@ -284,6 +294,74 @@ Example: If you had `maxIssues: 500`, use:
 ### Planned UI Consolidation
 
 The Create New Issue and Edit Issue forms will be consolidated into a single shared form unit to ensure identical fields, validation, and features across both workflows.
+
+## Security Rules
+
+These rules are mandatory for all code changes. Violations have caused real bugs in this codebase.
+
+### Webview HTML Safety
+
+**Rule: Every assignment to element.innerHTML MUST go through DOMPurify.sanitize(html, purifyConfig).**
+
+No exceptions. Even if the values are pre-escaped with escapeHtml(), wrap the final assignment in DOMPurify. This is defense-in-depth: a future refactor that adds HTML tags to escapeHtml-only code would immediately create stored XSS.
+
+**Audit pattern:** Search for `.innerHTML =` and verify every match uses DOMPurify.sanitize().
+
+### CLI Argument Ordering
+
+**Rule: All flags (--flag value) MUST come BEFORE the -- separator in execBd calls.**
+
+The `--` tells the CLI "no more flags follow." Placing --author, --type, etc. after `--` means the CLI treats them as positional arguments, bypassing the injection guard entirely.
+
+```typescript
+// WRONG - --author after -- is treated as positional text, not a flag
+await this.execBd(['comments', 'add', id, '--', text, '--author', author]);
+
+// CORRECT - flags before --, user content after
+await this.execBd(['comments', 'add', id, '--author', author, '--', text]);
+```
+
+### Input Validation
+
+**Rule: Every webview message handler MUST validate its payload with a Zod schema before use.**
+
+No handler should extract fields from msg.payload without .safeParse(). This includes new message types like table.loadPage. Copy the validation pattern from adjacent handlers.
+
+**Rule: All issue ID fields in Zod schemas MUST use IssueIdSchema, not z.string().max(N).**
+
+This includes parent_id, blocked_by_ids, children_ids, and any field that accepts an issue ID. The Zod schema is the first line of defense; the adapter's validateIssueId() is defense-in-depth, not the primary guard.
+
+### Subprocess Safety
+
+**Rule: All spawn wrappers MUST have a timeout and output buffer limit.**
+
+The DaemonBeadsAdapter.execBd method has both (30s timeout, 50MB buffer). Any new spawn wrapper (like DaemonManager.spawnAsync) must replicate these safeguards. Without them, a hung CLI process leaks memory and stalls the extension host event loop.
+
+### Error Message Sanitization
+
+**Rule: Never embed raw CLI stderr in thrown Error messages.**
+
+Run stderr through sanitizeError() or truncate before embedding. Raw stderr can contain internal paths, database locations, and debug output that leaks to the webview via mutation.error.
+
+### Test Correctness
+
+**Rule: Test assertions must test the specific constraint claimed by the test name.**
+
+- Never use tautological assertions like `assert.ok(x || !x)` — these always pass.
+- Verify test input objects use the correct field names matching the Zod schema (e.g., `id` not `issueId`, `otherId` not `dependsOnId`).
+- When testing "rejects X", ensure the rejection is for the right reason (not a missing required field).
+
+### Event Listener Hygiene in Webview
+
+**Rule: When reusing DOM elements across multiple openDetail() calls, clean up event listeners before adding new ones.**
+
+Use removeEventListener before addEventListener, or use AbortController signals. The form fields are static HTML reused for every card — each openDetail() must not accumulate listeners.
+
+### Shared State Across Modules
+
+**Rule: A safety-critical variable (like detailDirty) must have a single source of truth.**
+
+If both board.js and editForm.js need to check dirty state, share one reference (e.g., export a getter/setter). Two independent copies cause the unsaved-change guard to be bypassed depending on which code path opened the dialog.
 
 ## Common Bug Patterns
 
@@ -675,7 +753,8 @@ To debug, keep source maps in the VSIX by removing `**/*.map` from `.vscodeignor
 
 ## Important Notes
 
-- The extension requires `bd` CLI on PATH and auto-starts the daemon on load.
+- The extension requires `bd` CLI on PATH (or configured via `beadsKanban.bdPath` setting) and auto-starts the daemon on load.
+- **Configurable CLI paths:** `beadsKanban.bdPath` and `beadsKanban.doltPath` settings allow users to specify absolute paths to the `bd` and `dolt` executables, supporting portable setups where these tools are not on the system PATH.
 - `npm run compile` copies DOMPurify to the media folder via the `copy-deps` script.
 - Webview scripts are loaded via CSP nonce; HTML uses inline styles extensively.
 - `retainContextWhenHidden: true` keeps webview state when hidden.

@@ -45,6 +45,15 @@ export class DaemonBeadsAdapter {
   }
 
   /**
+   * Resolve the bd CLI executable path from workspace/user settings, falling back to PATH
+   */
+  private getBdCommand(): string {
+    const config = vscode.workspace.getConfiguration('beadsKanban');
+    const bdPath = config.get<string>('bdPath', '');
+    return bdPath || 'bd';
+  }
+
+  /**
    * Sanitize CLI argument to prevent command injection and parsing issues
    * Removes null bytes which can cause command truncation
    *
@@ -256,9 +265,10 @@ export class DaemonBeadsAdapter {
   private async execBd(args: string[], timeoutMs: number = 30000): Promise<unknown> {
     // Sanitize all arguments before passing to CLI
     const sanitizedArgs = args.map(arg => this.sanitizeCliArg(arg));
+    const bdCmd = this.getBdCommand();
     return new Promise((resolve, reject) => {
-      const command = `bd ${sanitizedArgs.join(' ')}`;
-      const child = spawn('bd', sanitizedArgs, {
+      const command = `${bdCmd} ${sanitizedArgs.join(' ')}`;
+      const child = spawn(bdCmd, sanitizedArgs, {
         cwd: this.workspaceRoot,
         shell: false
       });

@@ -71,7 +71,7 @@ export function sanitizeErrorWithContext(error: unknown): string {
     return 'Beads daemon is not running. Click the status bar to start the daemon, or run "bd daemon start" in terminal.';
   }
   if (sanitized.includes('bd command not found') || sanitized.includes('bd: command not found')) {
-    return 'Beads CLI (bd) not found in PATH. Install beads or add it to your system PATH.';
+    return 'Beads CLI (bd) not found in PATH. Install beads, add it to your system PATH, or set "beadsKanban.bdPath" in workspace settings.';
   }
 
   // Validation errors (keep as-is, they're already user-friendly)
