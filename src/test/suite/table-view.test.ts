@@ -56,27 +56,25 @@ suite('Table View Tests', () => {
 
         test('Has priority filter dropdown', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="filterPriority"'), 'Should have priority filter dropdown');
-            const prioritySelect = html.match(/<select[^>]*id="filterPriority"[^>]*>[\s\S]*?<\/select>/);
-            assert.ok(prioritySelect, 'Should have priority select element');
-            assert.ok(prioritySelect[0].includes('Priority: All'), 'Should have All option');
-            assert.ok(prioritySelect[0].includes('P0'), 'Should have P0 option');
-            assert.ok(prioritySelect[0].includes('P1'), 'Should have P1 option');
-            assert.ok(prioritySelect[0].includes('P2'), 'Should have P2 option');
-            assert.ok(prioritySelect[0].includes('P3'), 'Should have P3 option');
+            assert.ok(html.includes('id="filterPriorityBtn"'), 'Should have priority filter button');
+            assert.ok(html.includes('id="filterPriorityDropdown"'), 'Should have priority dropdown');
+            assert.ok(html.includes('Priority: All'), 'Should have All label');
+            assert.ok(html.includes('>P0<') || html.includes('> P0<'), 'Should have P0 option');
+            assert.ok(html.includes('>P1<') || html.includes('> P1<'), 'Should have P1 option');
+            assert.ok(html.includes('>P2<') || html.includes('> P2<'), 'Should have P2 option');
+            assert.ok(html.includes('>P3<') || html.includes('> P3<'), 'Should have P3 option');
         });
 
         test('Has type filter dropdown', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="filterType"'), 'Should have type filter dropdown');
-            const typeSelect = html.match(/<select[^>]*id="filterType"[^>]*>[\s\S]*?<\/select>/);
-            assert.ok(typeSelect, 'Should have type select element');
-            assert.ok(typeSelect[0].includes('Type: All'), 'Should have All option');
-            assert.ok(typeSelect[0].includes('Task'), 'Should have Task option');
-            assert.ok(typeSelect[0].includes('Bug'), 'Should have Bug option');
-            assert.ok(typeSelect[0].includes('Feature'), 'Should have Feature option');
-            assert.ok(typeSelect[0].includes('Epic'), 'Should have Epic option');
-            assert.ok(typeSelect[0].includes('Chore'), 'Should have Chore option');
+            assert.ok(html.includes('id="filterTypeBtn"'), 'Should have type filter button');
+            assert.ok(html.includes('id="filterTypeDropdown"'), 'Should have type dropdown');
+            assert.ok(html.includes('Type: All'), 'Should have All label');
+            assert.ok(html.includes('Task'), 'Should have Task option');
+            assert.ok(html.includes('Bug'), 'Should have Bug option');
+            assert.ok(html.includes('Feature'), 'Should have Feature option');
+            assert.ok(html.includes('Epic'), 'Should have Epic option');
+            assert.ok(html.includes('Chore'), 'Should have Chore option');
         });
 
         test('Has refresh button', () => {
@@ -101,36 +99,36 @@ suite('Table View Tests', () => {
             assert.ok(dialog, 'Dialog should be a <dialog> element');
         });
 
-        test('Dialog has title element', () => {
+        test('Dialog has title input', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detTitle"'), 'Dialog should have title element');
+            assert.ok(html.includes('id="editTitle"'), 'Dialog should have title input');
         });
 
-        test('Dialog has meta/badges section', () => {
+        test('Dialog has status/type/priority fields', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detMeta"'), 'Dialog should have meta section');
+            assert.ok(html.includes('id="editStatus"'), 'Dialog should have status field');
+            assert.ok(html.includes('id="editType"'), 'Dialog should have type field');
+            assert.ok(html.includes('id="editPriority"'), 'Dialog should have priority field');
         });
 
-        test('Dialog has description section', () => {
+        test('Dialog has description field', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="detDesc"'), 'Dialog should have description section');
+            assert.ok(html.includes('id="editDesc"'), 'Dialog should have description field');
         });
 
-        test('Dialog has Add to Chat button', () => {
+        test('Dialog has Chat button', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="addToChatBtn"'), 'Dialog should have Add to Chat button');
+            assert.ok(html.includes('id="btnChat"'), 'Dialog should have Chat button');
         });
 
-        test('Dialog has Copy Context button', () => {
+        test('Dialog has Copy button', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes('id="copyContextBtn"'), 'Dialog should have Copy Context button');
+            assert.ok(html.includes('id="btnCopy"'), 'Dialog should have Copy button');
         });
 
         test('Dialog has Close button', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
-            const dialogSection = html.match(/<dialog[^>]*id="detailDialog"[^>]*>[\s\S]*?<\/dialog>/);
-            assert.ok(dialogSection, 'Should have dialog section');
-            assert.ok(dialogSection[0].includes('value="close"'), 'Dialog should have close button');
+            assert.ok(html.includes('id="btnClose"'), 'Dialog should have Close button');
         });
     });
 

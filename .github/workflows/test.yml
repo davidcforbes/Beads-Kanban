@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [18.x, 20.x]
+        node-version: [20.x, 22.x]
       fail-fast: false
 
     steps:
@@ -29,7 +29,11 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Run VS Code extension tests
+    - name: Run VS Code extension tests (Linux)
+      if: runner.os == 'Linux'
+      run: xvfb-run -a npm test
+
+    - name: Run VS Code extension tests (non-Linux)
+      if: runner.os != 'Linux'
       run: npm test
-      continue-on-error: false
 
