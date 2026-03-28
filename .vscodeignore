@@ -36,6 +36,7 @@ GEMINI.md
 SECURITY_REVIEW.md
 TESTING_STRATEGY.md
 TESTING.md
+WEB_EXTENSION_PLAN.md
 # Keep CHANGELOG.md, README.md, LICENSE, PUBLISHING.md, MIGRATION.md
 
 # Build & Test Config
@@ -51,8 +52,11 @@ inspect_schema.js
 # Test Data & Results
 benchmark-results/**
 test-databases/**
+test-screenshots/**
+coverage/**
 .serena/**
 .Archive/**
+.Roadmap/**
 *-report.md
 *-summary.md
 test-output*.txt
