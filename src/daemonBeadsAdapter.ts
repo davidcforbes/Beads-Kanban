@@ -14,8 +14,23 @@ import {
 import { sanitizeError } from './sanitizeError';
 
 /**
- * BeadsAdapter implementation that uses the bd CLI daemon instead of sql.js
- * This eliminates the need for in-memory SQLite and provides better real-time sync
+ * Read a boolean flag that bd 1.0+ stores under issue.metadata.<key>. Falls back
+ * to the legacy top-level column for issues written by older bd versions. Accepts
+ * true, 1, or the strings "true"/"1" as truthy (bd metadata is stringly-typed).
+ */
+function readBoolFromMetadata(issue: Record<string, unknown>, key: string): boolean {
+  const metadata = issue.metadata as Record<string, unknown> | undefined;
+  const candidate = metadata?.[key] ?? issue[key];
+  if (candidate === true || candidate === 1) {return true;}
+  if (typeof candidate === 'string') {
+    const v = candidate.toLowerCase();
+    return v === 'true' || v === '1';
+  }
+  return false;
+}
+
+/**
+ * BeadsAdapter that shells out to the bd CLI for all issue operations.
  */
 export class DaemonBeadsAdapter {
   private workspaceRoot: string;
@@ -372,24 +387,16 @@ export class DaemonBeadsAdapter {
   }
 
   /**
-   * Ensure the daemon is connected and workspace is initialized
+   * Probe the bd CLI with `bd stats --json` to confirm it's reachable and the
+   * workspace database is readable. bd >= 1.0 removed the daemon subsystem, so
+   * this is now a simple CLI smoke test, not a connection check.
    */
   public async ensureConnected(): Promise<void> {
     try {
-      // Check daemon status using 'bd info --json'
-      const info = await this.execBd(['info', '--json']) as { daemon_connected?: boolean; daemon_status?: string } | null;
-
-      if (!info || !info.daemon_connected) {
-        throw new Error('Beads daemon is not running. Please start the daemon with: bd daemons start');
-      }
-
-      if (info.daemon_status !== 'healthy') {
-        this.output.appendLine(`[DaemonBeadsAdapter] Warning: Daemon status is ${info.daemon_status}`);
-      }
-
-      this.output.appendLine('[DaemonBeadsAdapter] Connected to beads daemon successfully');
+      await this.execBd(['stats', '--json']);
+      this.output.appendLine('[DaemonBeadsAdapter] bd CLI reachable');
     } catch (error) {
-      const msg = `Failed to connect to beads daemon: ${error instanceof Error ? error.message : String(error)}`;
+      const msg = `bd CLI not reachable: ${error instanceof Error ? error.message : String(error)}`;
       this.output.appendLine(`[DaemonBeadsAdapter] ERROR: ${msg}`);
       throw new Error(msg);
     }
@@ -603,7 +610,7 @@ export class DaemonBeadsAdapter {
           estimated_minutes: (i.estimated_minutes as number | null) || null,
           labels: Array.isArray(i.labels) ? i.labels as string[] : [],
           external_ref: (i.external_ref as string | null) || null,
-          pinned: (i.pinned as boolean) || false,
+          pinned: readBoolFromMetadata(i, 'pinned'),
           blocked_by_count: (i.blocked_by_count as number) || 0,
           is_ready: i.status === 'open' && ((i.blocked_by_count as number) || 0) === 0
         };
@@ -692,7 +699,7 @@ export class DaemonBeadsAdapter {
         estimated_minutes: (issue.estimated_minutes as number | null) || null,
         labels,
         external_ref: (issue.external_ref as string | null) || null,
-        pinned: issue.pinned === 1 || issue.pinned === true,
+        pinned: readBoolFromMetadata(issue, 'pinned'),
         blocked_by_count: blocked_by.length,
 
         // FullCard fields
@@ -702,7 +709,7 @@ export class DaemonBeadsAdapter {
         due_at: (issue.due_at as string | null) || null,
         defer_until: (issue.defer_until as string | null) || null,
         is_ready: issue.status === 'open' && blocked_by.length === 0,
-        is_template: issue.is_template === 1 || issue.is_template === true,
+        is_template: readBoolFromMetadata(issue, 'template'),
         ephemeral: issue.ephemeral === 1 || issue.ephemeral === true,
 
         // Event/Agent metadata
@@ -1444,8 +1451,8 @@ export class DaemonBeadsAdapter {
         due_at: (issue.due_at as string | null) || null,
         defer_until: (issue.defer_until as string | null) || null,
         labels,
-        pinned: issue.pinned === true || issue.pinned === 1,
-        is_template: issue.is_template === true || issue.is_template === 1,
+        pinned: readBoolFromMetadata(issue, 'pinned'),
+        is_template: readBoolFromMetadata(issue, 'template'),
         ephemeral: issue.ephemeral === true || issue.ephemeral === 1,
         event_kind: (issue.event_kind as string | null) || null,
         actor: (issue.actor as string | null) || null,
@@ -1601,13 +1608,14 @@ export class DaemonBeadsAdapter {
         await this.setIssueStatus(issueId, input.status);
       }
       
-      // Set pinned and is_template flags if needed (bd create doesn't support these)
-      const updateArgs = [];
-      if (input.pinned) {updateArgs.push('--pinned', 'true');}
-      if (input.is_template) {updateArgs.push('--template', 'true');}
-      
-      if (updateArgs.length > 0) {
-        await this.execBd(['update', issueId, ...updateArgs]);
+      // bd >= 1.0 removed the --pinned/--template flags; persist these
+      // booleans as structured metadata instead.
+      const metadataArgs: string[] = [];
+      if (input.pinned) {metadataArgs.push('--set-metadata', 'pinned=true');}
+      if (input.is_template) {metadataArgs.push('--set-metadata', 'template=true');}
+
+      if (metadataArgs.length > 0) {
+        await this.execBd(['update', issueId, ...metadataArgs]);
         this.trackMutation();
       }
 
@@ -1615,7 +1623,7 @@ export class DaemonBeadsAdapter {
       if (input.children_ids && input.children_ids.length > 0) {
         for (const childId of input.children_ids) {
           try {
-            await this.execBd(['dep', 'add', childId, issueId, '--type', 'parent-child']);
+            await this.execBd(['dep', 'add', '--type', 'parent-child', '--', childId, issueId]);
             this.trackMutation();
           } catch (childErr) {
             this.output.appendLine(`[DaemonBeadsAdapter] WARNING: Failed to set parent on child ${childId}: ${childErr}`);
@@ -1682,9 +1690,7 @@ export class DaemonBeadsAdapter {
     this.validateFlagValue(updates.defer_until, 'defer_until');
     this.validateFlagValue(updates.status, 'status');
 
-    // WORKAROUND: Use --no-daemon to bypass daemon bug with --due flag
-    // TODO: Test if this is still needed with bd 0.47.1+ and remove if fixed
-    const args = ['update', id, '--no-daemon'];
+    const args = ['update', id];
 
     if (updates.title !== undefined) {args.push('--title', updates.title);}
     if (updates.description !== undefined) {args.push('--description', updates.description);}
@@ -1808,8 +1814,10 @@ export class DaemonBeadsAdapter {
         throw new Error('Invalid dependency type');
       }
 
-      // Use '--' separator before issue IDs for defense in depth
-      await this.execBd(['dep', 'add', '--', issueId, dependsOnId, '--type', type]);
+      // Flags MUST come before '--'; bd treats anything after '--' as positional,
+      // so placing --type after the separator silently falls back to the default
+      // 'blocks' type (see CLAUDE.md "CLI Argument Ordering").
+      await this.execBd(['dep', 'add', '--type', type, '--', issueId, dependsOnId]);
 
       // Track mutation and invalidate cache
       this.trackMutation();

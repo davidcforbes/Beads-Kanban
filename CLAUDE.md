@@ -335,7 +335,7 @@ This includes parent_id, blocked_by_ids, children_ids, and any field that accept
 
 **Rule: All spawn wrappers MUST have a timeout and output buffer limit.**
 
-The DaemonBeadsAdapter.execBd method has both (30s timeout, 50MB buffer). Any new spawn wrapper (like DaemonManager.spawnAsync) must replicate these safeguards. Without them, a hung CLI process leaks memory and stalls the extension host event loop.
+The DaemonBeadsAdapter.execBd method has both (30s timeout, 50MB buffer). Any new spawn wrapper must replicate these safeguards. Without them, a hung CLI process leaks memory and stalls the extension host event loop.
 
 ### Error Message Sanitization
 
