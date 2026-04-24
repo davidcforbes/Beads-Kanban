@@ -5,6 +5,21 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2026-04-24
+
+### 🐛 Bug Fixes
+
+- **bd CLI 1.0.0 compatibility**: bd 1.0 removed the daemon subsystem and several flags the extension depended on. The Kanban board was failing to connect, every edit threw "unknown flag: --no-daemon", and pinned/template issue creation threw "unknown flag: --pinned".
+  - Replaced the `bd info --json` daemon probe (bd 1.0 emits plaintext) with a `bd stats --json` CLI smoke test in `DaemonBeadsAdapter.ensureConnected()`
+  - Dropped the `--no-daemon` workaround from `updateIssue` — the flag no longer exists, so every edit was failing
+  - Migrated pinned/template persistence from the removed `--pinned`/`--template` flags to `bd update --set-metadata pinned=true` / `template=true`; read paths now pull from `issue.metadata` with a legacy top-level fallback
+  - Fixed flag ordering in `addDependency`: `--type` is now emitted before the `--` separator (it was being silently treated as a positional argument, so every user-created dependency fell back to the default `blocks` type)
+
+### 🔧 Removed
+
+- **DaemonManager and the `beadsKanban.showDaemonActions` command**: `bd daemon` no longer exists as a command. The status bar, auto-start, polling, and daemon action menu have been removed. Direct CLI mode is now the only mode.
+- Deleted `src/daemonManager.ts` and `src/test/suite/daemon.test.ts`.
+
 ## [2.1.1] - 2026-03-28
 
 ### Security
