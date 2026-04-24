@@ -19,11 +19,6 @@ const detMeta = document.getElementById("detMeta");
 const addToChatBtn = document.getElementById("addToChatBtn");
 const copyContextBtn = document.getElementById("copyContextBtn");
 
-// Debug: Log dialog state on load
-console.log('[DEBUG] detDialog element:', detDialog);
-console.log('[DEBUG] Dialog open on load:', detDialog ? detDialog.open : 'null');
-console.log('[DEBUG] purifyConfig will be defined below with all necessary tags');
-
 const filterPriorityBtn = document.getElementById("filterPriorityBtn");
 const filterPriorityLabel = document.getElementById("filterPriorityLabel");
 const filterPriorityDropdown = document.getElementById("filterPriorityDropdown");
@@ -2960,8 +2955,6 @@ function refreshStaticFormIssueDatalist(form, card) {
 
 async function openDetail(card) {
     const thisGeneration = ++openDetailGeneration;
-    console.log('[DEBUG] openDetail called with card:', card ? { id: card.id, title: card.title } : null);
-    console.log('[DEBUG] Stack trace:', new Error().stack);
 
     if (!card) return;
 
@@ -2970,8 +2963,6 @@ async function openDetail(card) {
         console.error('Detail dialog element not found');
         return;
     }
-
-    console.log('[DEBUG] Dialog exists, proceeding to open');
 
     // Phase 2: Load full issue details if editing existing issue
     const isCreateMode = card.id === null;

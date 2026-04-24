@@ -5,6 +5,13 @@ All notable changes to the Beads Kanban extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.4] - 2026-04-24
+
+### 🧹 Cleanup
+
+- **Removed leftover `[DEBUG]` console.log statements** in `src/webview/board.js` that printed the detail-dialog element and a stack trace on every board open and every issue click. These cluttered the DevTools console with no runtime value.
+- **Dropped `frame-ancestors 'none'` from the `<meta>` CSP**. Browsers ignore `frame-ancestors` when delivered via a `<meta>` element (it only works in an HTTP response header), so the directive produced a permanent browser warning with no real effect. VS Code webviews are already sandboxed by the host iframe. Added an explanatory comment documenting the intentional omission and removed the two tests that asserted the now-absent string.
+
 ## [2.1.3] - 2026-04-24
 
 ### 🐛 Bug Fixes

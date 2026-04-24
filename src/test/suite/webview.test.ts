@@ -57,11 +57,6 @@ suite('Webview Security Tests', () => {
         assert.ok(html.includes("base-uri 'none'"), 'CSP should restrict base-uri');
     });
 
-    test('CSP: Has frame-ancestors none', () => {
-        const html = getWebviewHtml(mockWebview, mockUri);
-        assert.ok(html.includes("frame-ancestors 'none'"), 'CSP should prevent framing');
-    });
-
     test('CSP: Has form-action none', () => {
         const html = getWebviewHtml(mockWebview, mockUri);
         assert.ok(html.includes("form-action 'none'"), 'CSP should restrict form actions');

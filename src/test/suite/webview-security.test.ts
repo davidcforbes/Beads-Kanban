@@ -169,11 +169,6 @@ suite('Webview Security - XSS and Sanitization Tests', () => {
             assert.ok(html.includes("form-action 'none'"), 'CSP must restrict form submissions');
         });
 
-        test('CSP prevents framing via frame-ancestors', () => {
-            const html = getWebviewHtml(mockWebview, mockUri);
-            assert.ok(html.includes("frame-ancestors 'none'"), 'CSP must prevent clickjacking');
-        });
-
         test('CSP restricts base-uri', () => {
             const html = getWebviewHtml(mockWebview, mockUri);
             assert.ok(html.includes("base-uri 'none'"), 'CSP must prevent base tag injection');

@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 
 export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   // Use package version for cache-busting (production-friendly, changes only on updates)
-  const version = "2.1.3";
+  const version = "2.1.4";
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "out", "webview", "board.js")) + `?v=${version}`;
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "styles.css")) + `?v=${version}`;
   const graphStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "graph-styles.css")) + `?v=${version}`;
@@ -30,6 +30,8 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
     - JavaScript style manipulations via .style property are not affected by style-src-attr
     - All user content is sanitized via DOMPurify preventing XSS
     - Nonce-based script loading prevents unauthorized script execution
+    - frame-ancestors intentionally omitted: browsers ignore it when delivered
+      via <meta>, and VS Code webviews are already sandboxed by the host iframe
   -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
@@ -38,7 +40,6 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
                  script-src 'nonce-${nonce}';
                  connect-src ${webview.cspSource};
                  base-uri 'none';
-                 frame-ancestors 'none';
                  form-action 'none';
                  object-src 'none';
                  media-src 'none';
