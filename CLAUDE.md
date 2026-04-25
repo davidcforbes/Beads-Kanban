@@ -419,41 +419,31 @@ return issue?.id;
 
 `vsce publish` has been observed to fail intermittently with `read ECONNRESET` during PAT verification on this Windows + PowerShell setup. **The reliable path is to package locally with `vsce package` and upload the resulting `.vsix` through the marketplace web UI.** Steps:
 
-1. **Bump versions in two places** (cache-busting requires both — there is no automation):
+1. **Add a CHANGELOG entry** at the top of `CHANGELOG.md` (Keep-a-Changelog format) — `release:bump` refuses to proceed without it.
 
-   | File | Change |
-   |---|---|
-   | `package.json` | `"version": "X.Y.Z"` |
-   | `src/webview.ts` | `const version = "X.Y.Z";` (line 6) |
-
-2. **Add a CHANGELOG entry** at the top of `CHANGELOG.md` (Keep-a-Changelog format).
-
-3. **Verify the build is clean** before packaging:
+2. **Bump versions and verify-build-package in two npm commands:**
    ```powershell
-   npx tsc -p . --noEmit       # typecheck
-   npm run lint                 # ESLint
-   npm test                     # full mocha suite
+   npm run release:bump -- X.Y.Z      # updates package.json + src/webview.ts in lockstep
+   npm run release:package             # tsc + lint + test + vsce package
    ```
+   `release:bump` validates the version is plain `major.minor.patch` (marketplace rejects pre-release tags), verifies the CHANGELOG heading is present, and only writes if every check passes. `release:package` runs the full verify chain (typecheck + lint + Mocha suite) before packaging — it's the one-shot pre-upload command.
 
-4. **Package the VSIX in PowerShell** (NOT Git Bash — silent failures):
-   ```powershell
-   Remove-Item -Force beads-kanban-*.vsix -ErrorAction SilentlyContinue
-   npx --yes @vscode/vsce package
-   ```
-   Expected output: `DONE  Packaged: C:\dev\beads-kanban\beads-kanban-X.Y.Z.vsix (~37 files, ~1.1 MB)`.
+   Expected `release:package` tail: `DONE  Packaged: C:\dev\beads-kanban\beads-kanban-X.Y.Z.vsix (~37 files, ~1.1 MB)`.
 
-5. **(Optional) Test-install locally before uploading:**
+   ⚠️ **PowerShell, NOT Git Bash** — `vsce package` fails silently in Git Bash on Windows.
+
+3. **(Optional) Test-install locally before uploading:**
    ```powershell
    code --install-extension beads-kanban-X.Y.Z.vsix
    ```
 
-6. **Upload via the marketplace web UI** — this is the step that actually publishes:
+4. **Upload via the marketplace web UI** — this is the step that actually publishes:
    - Open <https://marketplace.visualstudio.com/manage/publishers/davidcforbes> in a browser signed into Microsoft as `chris@forbesassetmanagement.com` (use an InPrivate window if your default browser is signed into a different account).
    - Find the `beads-kanban` row → click the `…` menu → **Update**.
    - Drag-and-drop or browse to `C:\dev\beads-kanban\beads-kanban-X.Y.Z.vsix`.
    - Wait for the row to flip from "Verifying" to "Published" (a few seconds to a couple of minutes). CDN propagation to all VS Code clients takes ~5–15 minutes after that.
 
-7. **Commit and tag** after the marketplace shows "Published":
+5. **Commit and tag** after the marketplace shows "Published":
    ```powershell
    git add package.json src/webview.ts CHANGELOG.md
    git commit -m "Bump version to X.Y.Z"
@@ -462,7 +452,7 @@ return issue?.id;
    git push --tags
    ```
 
-8. **Verify the publish landed:**
+6. **Verify the publish landed:**
    ```powershell
    code --install-extension davidcforbes.beads-kanban --force
    code --list-extensions --show-versions | Select-String beads-kanban

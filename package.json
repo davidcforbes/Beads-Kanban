@@ -132,7 +132,10 @@
     "test:round-trip": "node scripts/test-round-trip.js",
     "test:all": "node scripts/test-all.js",
     "test:visual-harness": "node scripts/visual-test-harness.js",
-    "test:visual-server": "node scripts/visual-test-server.js"
+    "test:visual-server": "node scripts/visual-test-server.js",
+    "verify": "tsc -p . --noEmit && npm run lint && npm test",
+    "release:bump": "node scripts/bump-version.js",
+    "release:package": "npm run verify && npx @vscode/vsce package"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
