@@ -24,6 +24,10 @@
   ],
   "version": "2.1.4",
   "publisher": "davidcforbes",
+  "pricing": "Free",
+  "sponsor": {
+    "url": "https://github.com/sponsors/davidcforbes"
+  },
   "icon": "images/icon.png",
   "engines": {
     "node": ">=20.0.0",
