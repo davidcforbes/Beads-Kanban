@@ -408,55 +408,85 @@ return issue?.id;
 
 ## Publishing to VS Code Marketplace
 
-### Prerequisites
+### Publisher details (this project)
 
-1. **Azure DevOps Account**: Create at https://dev.azure.com
-2. **Personal Access Token (PAT)**: Create in Azure DevOps with:
-   - Organization: All accessible organizations
-   - Scopes: Marketplace (Manage)
-   - Expiration: Set appropriate expiry date
-3. **Publisher Account**: Create with `vsce create-publisher <publisher-name>`
+- **Publisher ID:** `davidcforbes` (case-insensitive; marketplace renders as `DavidCForbes`)
+- **Owning Microsoft account:** `chris@forbesassetmanagement.com` — the PAT and the marketplace web upload must both be performed signed in as this account, NOT the `davidcforbes@aol.com` account that bd uses for its actor identity.
+- **Publisher management page:** <https://marketplace.visualstudio.com/manage/publishers/davidcforbes>
+- **Public listing:** <https://marketplace.visualstudio.com/items?itemName=DavidCForbes.beads-kanban>
 
-### Publishing Workflow
+### Recommended workflow: package locally, upload via web UI
 
-**First-time setup:**
+`vsce publish` has been observed to fail intermittently with `read ECONNRESET` during PAT verification on this Windows + PowerShell setup. **The reliable path is to package locally with `vsce package` and upload the resulting `.vsix` through the marketplace web UI.** Steps:
 
-```bash
-# Install vsce globally (or use npx)
-npm install -g @vscode/vsce
+1. **Bump versions in two places** (cache-busting requires both — there is no automation):
 
-# Create publisher account (if not done)
-vsce create-publisher davidcforbes
+   | File | Change |
+   |---|---|
+   | `package.json` | `"version": "X.Y.Z"` |
+   | `src/webview.ts` | `const version = "X.Y.Z";` (line 6) |
 
-# Login with your PAT
-vsce login davidcforbes
-```
+2. **Add a CHANGELOG entry** at the top of `CHANGELOG.md` (Keep-a-Changelog format).
 
-**Publishing updates:**
+3. **Verify the build is clean** before packaging:
+   ```powershell
+   npx tsc -p . --noEmit       # typecheck
+   npm run lint                 # ESLint
+   npm test                     # full mocha suite
+   ```
 
-```bash
-# 1. Update version in package.json (semantic versioning)
-npm version patch  # or minor, major
+4. **Package the VSIX in PowerShell** (NOT Git Bash — silent failures):
+   ```powershell
+   Remove-Item -Force beads-kanban-*.vsix -ErrorAction SilentlyContinue
+   npx --yes @vscode/vsce package
+   ```
+   Expected output: `DONE  Packaged: C:\dev\beads-kanban\beads-kanban-X.Y.Z.vsix (~37 files, ~1.1 MB)`.
 
-# 2. Update version in src/webview.ts to match (for cache-busting)
+5. **(Optional) Test-install locally before uploading:**
+   ```powershell
+   code --install-extension beads-kanban-X.Y.Z.vsix
+   ```
 
-# 3. Ensure all tests pass
-npm test
+6. **Upload via the marketplace web UI** — this is the step that actually publishes:
+   - Open <https://marketplace.visualstudio.com/manage/publishers/davidcforbes> in a browser signed into Microsoft as `chris@forbesassetmanagement.com` (use an InPrivate window if your default browser is signed into a different account).
+   - Find the `beads-kanban` row → click the `…` menu → **Update**.
+   - Drag-and-drop or browse to `C:\dev\beads-kanban\beads-kanban-X.Y.Z.vsix`.
+   - Wait for the row to flip from "Verifying" to "Published" (a few seconds to a couple of minutes). CDN propagation to all VS Code clients takes ~5–15 minutes after that.
 
-# 4. Ensure ESLint passes
-npm run lint
+7. **Commit and tag** after the marketplace shows "Published":
+   ```powershell
+   git add package.json src/webview.ts CHANGELOG.md
+   git commit -m "Bump version to X.Y.Z"
+   git tag vX.Y.Z
+   git push
+   git push --tags
+   ```
 
-# 5. Package the extension (use PowerShell on Windows)
-vsce package
+8. **Verify the publish landed:**
+   ```powershell
+   code --install-extension davidcforbes.beads-kanban --force
+   code --list-extensions --show-versions | Select-String beads-kanban
+   ```
+   Should report `davidcforbes.beads-kanban@X.Y.Z`.
 
-# 6. Publish to marketplace
-vsce publish
+### Fallback: CLI publish (if web UI is unavailable)
 
-# 7. Commit version bump and push
-git add package.json src/webview.ts
-git commit -m "Bump version to $(node -p "require('./package.json').version")"
-git push
-git push --tags
+`vsce publish` works when it works, but be prepared for it to fail. Prerequisites:
+
+1. **PAT generated from the right Microsoft account.** Sign into <https://dev.azure.com/_usersSettings/tokens> as `chris@forbesassetmanagement.com` (NOT a different MS account — generating from the wrong account is what causes `ERROR The Personal Access Token verification has failed`).
+2. **PAT scopes:** Custom defined → **Marketplace → Manage**, Organization: **All accessible organizations**.
+3. **Sanity-check the PAT in Notepad before pasting:** standard Azure DevOps PATs are **52 characters**, alphanumeric only. If your prompt shows ~84 asterisks, you almost certainly pasted a JWT/GitHub token by mistake — regenerate.
+4. Run from PowerShell:
+   ```powershell
+   npx @vscode/vsce login davidcforbes        # paste 52-char PAT at prompt
+   npx @vscode/vsce publish                    # uses package.json version
+   ```
+
+If `vsce publish` returns `read ECONNRESET` even with a valid PAT, fall back to step 6 of the recommended workflow (web upload) — don't burn time troubleshooting transport failures. Symptoms that indicate it's a network/proxy issue rather than a PAT issue:
+
+```powershell
+# Should return 200/203/401, not hang or error:
+curl -sS -o NUL -w "HTTP %{http_code}`n" https://marketplace.visualstudio.com/_apis/public/gallery
 ```
 
 **Package.json Requirements:**
@@ -501,27 +531,12 @@ git push --tags
 
 These must match for proper webview cache invalidation.
 
-### Version Bump and Package Workflow
+### CHANGELOG format
 
-When creating a new version for marketplace publishing, follow these steps:
-
-**1. Update version numbers (2 files):**
-
-```bash
-# Edit package.json - change version field
-"version": "2.0.X"
-
-# Edit src/webview.ts - change version constant (line 6)
-const version = "2.0.X";
-```
-
-**2. Update CHANGELOG.md:**
-
-Add a new version entry at the top with:
-- Version number and date
-- Categories: 🚀 Performance, ✨ Added, 🐛 Bug Fixes, 🔧 Build System, 📚 Documentation, etc.
+When adding a new version entry to `CHANGELOG.md`, follow Keep-a-Changelog conventions:
+- Version number and date at the top of the file
+- Category headings: 🚀 Performance, ✨ Added, 🐛 Bug Fixes, 🔧 Build System, 📚 Documentation, 🧹 Cleanup, 📦 Marketplace metadata, etc.
 - Bullet points describing changes
-- Follow Keep a Changelog format
 
 Example:
 ```markdown
@@ -538,81 +553,20 @@ Example:
 - **Issue description**: How it was fixed
 ```
 
-**3. Build and package:**
+**Verify package contents** after `vsce package`:
 
-```bash
-# Clean previous build artifacts (optional)
-rm beads-kanban-*.vsix
-
-# Build and package (runs all bundling automatically)
-npx @vscode/vsce package
+```powershell
+npx @vscode/vsce ls beads-kanban-X.Y.Z.vsix
+ls beads-kanban-X.Y.Z.vsix
 ```
 
-Expected output:
-```
-✓ Extension host bundle built successfully
-✓ Webview bundle built successfully
-INFO  Files included in the VSIX:
-DONE  Packaged: beads-kanban-2.0.X.vsix (23 files, ~913 KB)
-```
-
-**4. Verify package contents:**
-
-```bash
-# List files in package
-npx @vscode/vsce ls beads-kanban-2.0.X.vsix
-
-# Check file size
-ls -lh beads-kanban-2.0.X.vsix
-```
-
-Should include only 23 files:
+Should include ~37 files (~1.1 MB):
 - `out/extension.js` (bundled extension host)
 - `out/webview/board.js` (bundled webview)
 - `media/` (CSS, JS libraries)
 - `images/` (icon, screenshots)
-- Documentation (README, CHANGELOG, LICENSE, PUBLISHING, MIGRATION)
+- Documentation (README, CHANGELOG, LICENSE, PUBLISHING, MIGRATION, SECURITY, ROADMAP_BEADS_BRIDGE)
 - `.github/` (templates, workflows)
-
-**5. Test locally (optional but recommended):**
-
-```bash
-# Install in VS Code
-code --install-extension beads-kanban-2.0.X.vsix
-
-# Test all functionality:
-# - Open Kanban board in project with .beads/
-# - Verify drag-and-drop works
-# - Test edit forms
-# - Check all commands
-```
-
-**6. Publish to marketplace:**
-
-```bash
-# Publish (requires login with PAT)
-npx @vscode/vsce publish
-
-# Or publish specific version
-npx @vscode/vsce publish 2.0.X
-```
-
-**7. Commit and tag:**
-
-```bash
-# Stage version changes
-git add package.json src/webview.ts CHANGELOG.md
-
-# Commit
-git commit -m "Bump version to 2.0.X"
-
-# Create git tag
-git tag v2.0.X
-
-# Push to remote
-git push origin main
-git push origin v2.0.X
-```
 
 **Quick Reference - Files to Update:**
 
@@ -624,10 +578,12 @@ git push origin v2.0.X
 
 **Common Issues:**
 
-- **Wrong file count**: If you see 742+ files instead of 23, check `.vscodeignore` is properly configured
-- **Large package size**: If size > 1 MB, ensure bundling is working (check for `out/extension.js`)
-- **Build fails**: Run `npm run compile` first to test bundling independently
-- **Version mismatch warning**: Ensure package.json and webview.ts versions match exactly
+- **Wrong file count / huge package**: If you see hundreds of files or >2 MB, the bundler regressed — confirm `out/extension.js` and `out/webview/board.js` exist and `.vscodeignore` excludes `src/**`, `node_modules/**`, and `out/test/**`. Healthy package is ~37 files / ~1.1 MB.
+- **Build fails**: Run `npm run compile` first to test bundling independently of `vsce`.
+- **Version mismatch warning**: `package.json` and `src/webview.ts` versions must match exactly — the cache-bust query string is keyed on the constant in `webview.ts`.
+- **`vsce publish` returns `read ECONNRESET`**: Don't troubleshoot — fall back to web upload at <https://marketplace.visualstudio.com/manage/publishers/davidcforbes>.
+- **`vsce publish` returns `Personal Access Token verification has failed`**: PAT was generated from the wrong Microsoft account. The publisher is owned by `chris@forbesassetmanagement.com`; sign into <https://dev.azure.com/_usersSettings/tokens> as that account and regenerate.
+- **PAT prompt shows ~84 asterisks instead of ~52**: You pasted the wrong kind of token (likely a JWT or GitHub token). Standard ADO PATs are 52 alphanumeric characters with no whitespace.
 
 ### Publishing Output Reference
 
@@ -653,14 +609,14 @@ WARNING  This extension consists of 900 files, out of which 592 are JavaScript f
 DONE  Packaged: beads-kanban-2.0.5.vsix (900 files, 2.26 MB)
 ```
 
-**After bundling optimization** (version 2.0.6+):
+**After bundling optimization** (version 2.0.6+, current packaging produces ~37 files / ~1.1 MB):
 ```
 ✓ Extension host bundle built successfully
 ✓ Webview bundle built successfully
-DONE  Packaged: beads-kanban-2.0.6.vsix (23 files, 912 KB)
+DONE  Packaged: beads-kanban-X.Y.Z.vsix (37 files, ~1.1 MB)
 ```
 
-This represents a 97% reduction in file count and 60% reduction in package size.
+This represents a ~96% reduction in file count and ~50% reduction in package size compared to pre-bundling.
 
 See "Extension Bundling" section below for implementation details.
 
